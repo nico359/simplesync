@@ -2,6 +2,9 @@
 <gresources>
   <gresource prefix="/io/github/nico359/cloudsend">
     <file preprocess="xml-stripblanks">window.ui</file>
-    <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <file preprocess="xml-stripblanks">account_page.ui</file>
+    <file preprocess="xml-stripblanks">targets_page.ui</file>
+    <file preprocess="xml-stripblanks">target_edit_page.ui</file>
+    <file preprocess="xml-stripblanks">remote_browser_page.ui</file>
   </gresource>
 </gresources>

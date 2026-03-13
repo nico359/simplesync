@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="libadwaita" version="1.0"/>
+  <template class="CloudsendRemoteBrowserPage" parent="AdwNavigationPage">
+    <property name="title" translatable="yes">Select Remote Folder</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <child type="end">
+              <object class="GtkButton" id="select_button">
+                <property name="label" translatable="yes">Select</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="new_folder_button">
+                <property name="icon-name">folder-new-symbolic</property>
+                <property name="tooltip-text" translatable="yes">New Folder</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwClamp">
+            <property name="maximum-size">600</property>
+            <property name="child">
+              <object class="GtkStack" id="browser_stack">
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">loading</property>
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">12</property>
+                        <property name="halign">center</property>
+                        <property name="valign">center</property>
+                        <property name="vexpand">true</property>
+                        <child>
+                          <object class="GtkSpinner">
+                            <property name="spinning">true</property>
+                            <property name="width-request">32</property>
+                            <property name="height-request">32</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Loading…</property>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">content</property>
+                    <property name="child">
+                      <object class="GtkScrolledWindow">
+                        <property name="vexpand">true</property>
+                        <property name="child">
+                          <object class="GtkListBox" id="folders_listbox">
+                            <property name="selection-mode">none</property>
+                            <style>
+                              <class name="boxed-list"/>
+                            </style>
+                          </object>
+                        </property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">error</property>
+                    <property name="child">
+                      <object class="AdwStatusPage" id="error_status">
+                        <property name="icon-name">dialog-error-symbolic</property>
+                        <property name="title" translatable="yes">Error</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

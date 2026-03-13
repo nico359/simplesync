@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="libadwaita" version="1.0"/>
+  <template class="CloudsendAccountPage" parent="AdwNavigationPage">
+    <property name="title" translatable="yes">Account</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar"/>
+        </child>
+        <property name="content">
+          <object class="AdwClamp">
+            <property name="maximum-size">600</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">24</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <property name="title" translatable="yes">Nextcloud Server</property>
+                    <child>
+                      <object class="AdwEntryRow" id="server_url_row">
+                        <property name="title" translatable="yes">Server URL</property>
+                        <property name="input-hints">no-spellcheck</property>
+
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="username_row">
+                        <property name="title" translatable="yes">Username</property>
+                        <property name="input-hints">no-spellcheck</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPasswordEntryRow" id="password_row">
+                        <property name="title" translatable="yes">App Password</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <child>
+                      <object class="GtkButton" id="test_button">
+                        <property name="label" translatable="yes">Test Connection</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="status_label">
+                        <property name="label"></property>
+                        <property name="halign">center</property>
+                        <property name="wrap">true</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <child>
+                      <object class="GtkButton" id="save_button">
+                        <property name="label" translatable="yes">Save</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="remove_button">
+                        <property name="label" translatable="yes">Remove Account</property>
+                        <property name="halign">center</property>
+                        <property name="visible">false</property>
+                        <style>
+                          <class name="destructive-action"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

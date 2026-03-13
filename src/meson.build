@@ -30,6 +30,14 @@ cloudsend_sources = [
   '__init__.py',
   'main.py',
   'window.py',
+  'account_page.py',
+  'targets_page.py',
+  'target_edit_page.py',
+  'remote_browser_page.py',
+  'webdav.py',
+  'push.py',
+  'db.py',
+  'keyring.py',
 ]
 
 install_data(cloudsend_sources, install_dir: moduledir)

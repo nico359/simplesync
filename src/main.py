@@ -36,7 +36,7 @@ class CloudsendApplication(Adw.Application):
                          resource_base_path='/io/github/nico359/cloudsend')
         self.create_action('quit', lambda *_: self.quit(), ['<control>q'])
         self.create_action('about', self.on_about_action)
-        self.create_action('preferences', self.on_preferences_action)
+        self.create_action('account', self.on_account_action)
 
     def do_activate(self):
         """Called when the application is activated.
@@ -51,19 +51,21 @@ class CloudsendApplication(Adw.Application):
 
     def on_about_action(self, *args):
         """Callback for the app.about action."""
-        about = Adw.AboutDialog(application_name='cloudsend',
+        about = Adw.AboutDialog(application_name='CloudSend',
                                 application_icon='io.github.nico359.cloudsend',
-                                developer_name='Unknown',
+                                developer_name='nico359',
                                 version='0.1.0',
-                                developers=['Unknown'],
-                                copyright='© 2026 Unknown')
-        # Translators: Replace "translator-credits" with your name/username, and optionally an email or URL.
-        about.set_translator_credits(_('translator-credits'))
+                                developers=['nico359'],
+                                copyright='© 2026 nico359',
+                                comments='Push local folders to Nextcloud',
+                                license_type=Gtk.License.GPL_3_0)
         about.present(self.props.active_window)
 
-    def on_preferences_action(self, widget, _):
-        """Callback for the app.preferences action."""
-        print('app.preferences action activated')
+    def on_account_action(self, *args):
+        """Callback for the app.account action."""
+        win = self.props.active_window
+        if win:
+            win.show_account_page()
 
     def create_action(self, name, callback, shortcuts=None):
         """Add an application action.
