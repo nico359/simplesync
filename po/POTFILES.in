@@ -1,0 +1,8 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/io.github.nico359.cloudsend.desktop.in
+data/io.github.nico359.cloudsend.metainfo.xml.in
+data/io.github.nico359.cloudsend.gschema.xml
+src/main.py
+src/window.py
+src/window.ui

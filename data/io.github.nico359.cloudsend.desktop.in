@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=cloudsend
+Exec=cloudsend
+Icon=io.github.nico359.cloudsend
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true
