@@ -128,8 +128,8 @@ class PushEngine:
         dirs_sorted = sorted(dirs_set, key=lambda d: d.count('/'))
         remote_dirs = [remote_base + '/' + d for d in dirs_sorted]
 
-        # Start the async chain: create dirs → upload files → mirror → complete
-        self._create_directories(remote_dirs, self._upload_next)
+        # Start the async chain: create dirs → check remote → upload files → mirror → complete
+        self._create_directories(remote_dirs, self._check_remote_files)
 
     def cancel(self):
         """Cancel the running push. The upload loop will stop between files."""
@@ -138,6 +138,67 @@ class PushEngine:
     # ------------------------------------------------------------------
     # Internal async chain
     # ------------------------------------------------------------------
+
+    def _check_remote_files(self):
+        """PROPFIND remote directories to find files that already exist,
+        then remove them from the upload queue to avoid overwriting."""
+        remote_base = self._target['remote_path'].rstrip('/')
+        self._remote_existing = set()
+
+        # Collect unique remote parent dirs from the upload queue
+        remote_dirs_to_check = set()
+        remote_dirs_to_check.add(remote_base)
+        for entry in self._upload_queue:
+            parent = os.path.dirname(entry['rel_path'])
+            if parent:
+                remote_dirs_to_check.add(remote_base + '/' + parent)
+
+        dirs_list = sorted(remote_dirs_to_check, key=lambda d: d.count('/'))
+
+        def _list_next():
+            if not dirs_list:
+                self._filter_existing_and_upload()
+                return
+            current_dir = dirs_list.pop(0)
+            # Derive the prefix (relative to remote_base) for this dir
+            if current_dir == remote_base:
+                prefix = ''
+            else:
+                prefix = current_dir[len(remote_base) + 1:]
+
+            def _on_listed(success, result):
+                if success:
+                    for item in result:
+                        if not item['is_dir']:
+                            rel = prefix + '/' + item['name'] if prefix else item['name']
+                            self._remote_existing.add(rel)
+                _list_next()
+
+            self._client.list_directory(current_dir, _on_listed)
+
+        _list_next()
+
+    def _filter_existing_and_upload(self):
+        """Remove already-existing remote files from upload queue, then start uploading."""
+        if self._remote_existing:
+            filtered = []
+            db = get_db()
+            for entry in self._upload_queue:
+                if entry['rel_path'] in self._remote_existing:
+                    self._summary['skipped'] += 1
+                    self._files_done += 1
+                    # Record state so future pushes skip this file too
+                    db.upsert_file_state(
+                        self._target['id'],
+                        entry['rel_path'],
+                        entry['mtime'],
+                        entry['size'],
+                    )
+                else:
+                    filtered.append(entry)
+            self._upload_queue = filtered
+            self._files_total = self._files_done + len(self._upload_queue)
+        self._upload_next()
 
     def _create_directories(self, dirs_list, callback):
         """Create remote directories one by one via callback chaining."""
