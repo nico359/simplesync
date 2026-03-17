@@ -18,3 +18,8 @@ log = "0.4"
 package = "libadwaita"
 version = "0.7"
 features = ["v1_6"]
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "s"
