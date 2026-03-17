@@ -41,7 +41,8 @@
             "sources" : [
                 {
                     "type" : "git",
-                    "url" : "file:///home/nb/Projects/cloudsend"
+                    "url" : "file:///home/nb/Projects/cloudsend",
+                    "branch" : "main"
                 }
             ]
         }
