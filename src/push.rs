@@ -115,9 +115,29 @@ fn do_push(
             rusqlite::params![target.id]).ok();
     }
 
-    // Step 2: Filter files that need uploading (changed since last push)
+    // Step 2: Collect existing remote files to avoid overwriting
+    let remote_set: std::collections::HashSet<String> = if !force {
+        match client.list_directory_recursive(&target.remote_path) {
+            Ok(files) => {
+                let remote_base = target.remote_path.trim_end_matches('/');
+                files.iter()
+                    .filter_map(|f| {
+                        f.trim_start_matches('/')
+                            .strip_prefix(remote_base.trim_start_matches('/'))
+                            .map(|rel| rel.trim_start_matches('/').to_string())
+                    })
+                    .collect()
+            }
+            Err(_) => HashSet::new(),
+        }
+    } else {
+        HashSet::new()
+    };
+
+    // Step 3: Filter files that need uploading (changed since last push or not on remote)
     let mut to_upload: Vec<(String, f64, i64)> = Vec::new();
     for (rel_path, mtime, size) in &local_files {
+        // Check file_state DB first (tracks what we've already uploaded)
         let existing: Option<(f64, i64)> = conn.query_row(
             "SELECT mtime, size FROM file_state WHERE target_id = ?1 AND rel_path = ?2",
             rusqlite::params![target.id, rel_path],
@@ -129,6 +149,10 @@ fn do_push(
                 summary.skipped += 1;
                 continue;
             }
+        } else if remote_set.contains(rel_path.as_str()) {
+            // File exists on remote but not in our DB — skip it
+            summary.skipped += 1;
+            continue;
         }
         to_upload.push((rel_path.clone(), *mtime, *size));
     }
