@@ -24,6 +24,7 @@ mod db;
 mod keyring;
 mod webdav;
 mod push;
+mod pull;
 mod window;
 mod targets_page;
 mod account_page;

@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use crate::db::Target;
 use crate::keyring;
 use crate::push::{self, PushProgress};
+use crate::pull::{self, PullProgress};
 use crate::target_edit_page::SimplesyncTargetEditPage;
 use crate::webdav::WebDAVClient;
 use crate::window::SimplesyncWindow;
@@ -150,7 +151,7 @@ impl SimplesyncTargetsPage {
         row.add_suffix(&mode_label);
 
         let push_button = gtk::Button::builder()
-            .icon_name("emblem-synchronizing-symbolic")
+            .icon_name("go-up-symbolic")
             .valign(gtk::Align::Center)
             .tooltip_text("Push")
             .build();
@@ -162,6 +163,20 @@ impl SimplesyncTargetsPage {
             page.push_target(target_id, Some(btn.clone()));
         });
         row.add_suffix(&push_button);
+
+        let pull_button = gtk::Button::builder()
+            .icon_name("go-down-symbolic")
+            .valign(gtk::Align::Center)
+            .tooltip_text("Pull")
+            .build();
+        pull_button.add_css_class("flat");
+
+        let target_id = target.id;
+        let page = self.clone();
+        pull_button.connect_clicked(move |btn| {
+            page.pull_target(target_id, Some(btn.clone()));
+        });
+        row.add_suffix(&pull_button);
 
         let target_id = target.id;
         let page = self.clone();
@@ -242,6 +257,56 @@ impl SimplesyncTargetsPage {
                         };
                         page.window().show_toast(&msg);
                         page.refresh_targets();
+                        return glib::ControlFlow::Break;
+                    }
+                }
+            }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    fn pull_target(&self, target_id: i64, button: Option<gtk::Button>) {
+        let creds = match keyring::load_credentials_sync() {
+            Some(c) => c,
+            None => {
+                self.window().show_toast("No account configured. Set up an account first.");
+                return;
+            }
+        };
+
+        let window = self.window();
+        let target = match window.db().get_target(target_id) {
+            Ok(t) => t,
+            Err(_) => {
+                self.window().show_toast("Target not found");
+                return;
+            }
+        };
+
+        let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
+
+        if let Some(ref btn) = button {
+            btn.set_sensitive(false);
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        pull::run_pull(client, target, tx);
+
+        let page = self.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+            while let Ok(progress) = rx.try_recv() {
+                match progress {
+                    PullProgress::File { .. } => {}
+                    PullProgress::Complete { success, summary } => {
+                        if let Some(ref btn) = button {
+                            btn.set_sensitive(true);
+                        }
+                        let msg = if success {
+                            format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped)
+                        } else {
+                            format!("Pull completed with {} error(s)", summary.errors.len())
+                        };
+                        page.window().show_toast(&msg);
                         return glib::ControlFlow::Break;
                     }
                 }

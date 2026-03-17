@@ -210,6 +210,36 @@ impl WebDAVClient {
         }
     }
 
+    /// Download a remote file to a local path (GET request)
+    pub fn download_file(&self, remote_path: &str, local_path: &str) -> Result<(), WebDAVError> {
+        let path = remote_path.trim_start_matches('/');
+        let url = format!("{}/{}", self.base_url(), encode_path(path));
+
+        let client = self.client()?;
+        let resp = client
+            .get(&url)
+            .header("Authorization", self.auth_header())
+            .send()
+            .map_err(|e| WebDAVError::Http(e.to_string()))?;
+
+        let status = resp.status().as_u16();
+        if status != 200 {
+            return Err(WebDAVError::Http(format!("GET returned status {}", status)));
+        }
+
+        let bytes = resp.bytes().map_err(|e| WebDAVError::Http(e.to_string()))?;
+
+        if let Some(parent) = std::path::Path::new(local_path).parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| WebDAVError::Io(format!("Failed to create dir: {}", e)))?;
+        }
+
+        std::fs::write(local_path, &bytes)
+            .map_err(|e| WebDAVError::Io(format!("Failed to write {}: {}", local_path, e)))?;
+
+        Ok(())
+    }
+
     /// Check if a remote file exists (HEAD request)
     #[allow(dead_code)]
     pub fn file_exists(&self, remote_path: &str) -> Result<bool, WebDAVError> {
