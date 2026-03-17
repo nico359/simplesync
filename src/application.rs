@@ -85,7 +85,18 @@ impl SimplesyncApplication {
         let about_action = gio::ActionEntry::builder("about")
             .activate(move |app: &Self, _, _| app.show_about())
             .build();
-        self.add_action_entries([quit_action, about_action]);
+        let account_action = gio::ActionEntry::builder("account")
+            .activate(move |app: &Self, _, _| app.show_account())
+            .build();
+        self.add_action_entries([quit_action, about_action, account_action]);
+    }
+
+    fn show_account(&self) {
+        let window = self.active_window().unwrap();
+        let window: SimplesyncWindow = window.downcast().unwrap();
+        let account_page = crate::account_page::SimplesyncAccountPage::new();
+        account_page.set_window(&window);
+        window.navigation_view().push(&account_page);
     }
 
     fn show_about(&self) {

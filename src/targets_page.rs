@@ -1,6 +1,6 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gtk::{gio, glib};
+use gtk::glib;
 use std::cell::RefCell;
 
 use crate::db::Target;
@@ -92,17 +92,6 @@ impl SimplesyncTargetsPage {
         self.imp().push_all_button.connect_clicked(move |_| {
             page.push_all();
         });
-
-        // Set up application account action
-        let page = self.clone();
-        if let Some(app) = self.window().application() {
-            let account_action = gio::SimpleAction::new("account", None);
-            let page_ref = page.clone();
-            account_action.connect_activate(move |_, _| {
-                page_ref.show_account_page();
-            });
-            app.add_action(&account_action);
-        }
     }
 
     pub fn refresh_targets(&self) {
@@ -205,12 +194,6 @@ impl SimplesyncTargetsPage {
             page.refresh_targets();
         });
         self.window().navigation_view().push(&edit_page);
-    }
-
-    fn show_account_page(&self) {
-        let account_page = crate::account_page::SimplesyncAccountPage::new();
-        account_page.set_window(&self.window());
-        self.window().navigation_view().push(&account_page);
     }
 
     fn push_target(&self, target_id: i64, button: Option<gtk::Button>) {
