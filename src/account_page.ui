@@ -10,84 +10,100 @@
           <object class="AdwHeaderBar"/>
         </child>
         <property name="content">
-          <object class="AdwClamp">
-            <property name="maximum-size">600</property>
-            <property name="child">
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <property name="spacing">24</property>
+          <object class="GtkScrolledWindow">
+            <property name="hscrollbar-policy">never</property>
+            <child>
+              <object class="AdwClamp">
                 <property name="margin-top">24</property>
                 <property name="margin-bottom">24</property>
                 <property name="margin-start">12</property>
                 <property name="margin-end">12</property>
                 <child>
-                  <object class="AdwPreferencesGroup">
-                    <property name="title" translatable="yes">Nextcloud Server</property>
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">24</property>
                     <child>
-                      <object class="AdwEntryRow" id="server_url_row">
-                        <property name="title" translatable="yes">Server URL</property>
-                        <property name="input-hints">no-spellcheck</property>
-
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Server</property>
+                        <child>
+                          <object class="AdwEntryRow" id="server_entry">
+                            <property name="title" translatable="yes">Server URL</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwEntryRow" id="username_entry">
+                            <property name="title" translatable="yes">Username</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwPasswordEntryRow" id="password_entry">
+                            <property name="title" translatable="yes">App Password</property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                     <child>
-                      <object class="AdwEntryRow" id="username_row">
-                        <property name="title" translatable="yes">Username</property>
-                        <property name="input-hints">no-spellcheck</property>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">12</property>
+                        <child>
+                          <object class="GtkButton" id="test_button">
+                            <property name="label" translatable="yes">Test Connection</property>
+                            <property name="halign">center</property>
+                            <style>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox" id="test_status_box">
+                            <property name="orientation">horizontal</property>
+                            <property name="halign">center</property>
+                            <property name="spacing">8</property>
+                            <child>
+                              <object class="GtkSpinner" id="test_spinner">
+                                <property name="visible">False</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="test_label">
+                                <property name="label"></property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
                       </object>
                     </child>
                     <child>
-                      <object class="AdwPasswordEntryRow" id="password_row">
-                        <property name="title" translatable="yes">App Password</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwPreferencesGroup">
-                    <child>
-                      <object class="GtkButton" id="test_button">
-                        <property name="label" translatable="yes">Test Connection</property>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">12</property>
                         <property name="halign">center</property>
-                        <style>
-                          <class name="suggested-action"/>
-                        </style>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkLabel" id="status_label">
-                        <property name="label"></property>
-                        <property name="halign">center</property>
-                        <property name="wrap">true</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwPreferencesGroup">
-                    <child>
-                      <object class="GtkButton" id="save_button">
-                        <property name="label" translatable="yes">Save</property>
-                        <property name="halign">center</property>
-                        <style>
-                          <class name="suggested-action"/>
-                        </style>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkButton" id="remove_button">
-                        <property name="label" translatable="yes">Remove Account</property>
-                        <property name="halign">center</property>
-                        <property name="visible">false</property>
-                        <style>
-                          <class name="destructive-action"/>
-                        </style>
+                        <child>
+                          <object class="GtkButton" id="save_button">
+                            <property name="label" translatable="yes">Save</property>
+                            <style>
+                              <class name="suggested-action"/>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="remove_button">
+                            <property name="label" translatable="yes">Remove Account</property>
+                            <property name="visible">False</property>
+                            <style>
+                              <class name="destructive-action"/>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
                 </child>
               </object>
-            </property>
+            </child>
           </object>
         </property>
       </object>

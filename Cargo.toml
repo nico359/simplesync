@@ -1,0 +1,20 @@
+[package]
+name = "simplesync"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
+gtk = { version = "0.9", package = "gtk4", features = ["gnome_47"] }
+rusqlite = { version = "0.34", features = ["bundled"] }
+chrono = "0.4"
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false }
+roxmltree = "0.20"
+base64 = "0.22"
+walkdir = "2"
+log = "0.4"
+
+[dependencies.adw]
+package = "libadwaita"
+version = "0.7"
+features = ["v1_6"]

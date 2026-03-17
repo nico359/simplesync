@@ -3,102 +3,95 @@
   <requires lib="gtk" version="4.0"/>
   <requires lib="libadwaita" version="1.0"/>
   <template class="SimplesyncTargetEditPage" parent="AdwNavigationPage">
-    <property name="title" translatable="yes">Add Target</property>
+    <property name="title" translatable="yes">Edit Target</property>
     <property name="child">
       <object class="AdwToolbarView">
         <child type="top">
           <object class="AdwHeaderBar"/>
         </child>
         <property name="content">
-          <object class="AdwClamp">
-            <property name="maximum-size">600</property>
-            <property name="child">
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <property name="spacing">24</property>
+          <object class="GtkScrolledWindow">
+            <property name="hscrollbar-policy">never</property>
+            <child>
+              <object class="AdwClamp">
                 <property name="margin-top">24</property>
                 <property name="margin-bottom">24</property>
                 <property name="margin-start">12</property>
                 <property name="margin-end">12</property>
                 <child>
-                  <object class="AdwPreferencesGroup">
-                    <property name="title" translatable="yes">Local Folder</property>
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">24</property>
                     <child>
-                      <object class="AdwActionRow" id="local_folder_row">
-                        <property name="title" translatable="yes">Select Folder</property>
-                        <property name="subtitle">(none selected)</property>
-                        <property name="activatable">true</property>
-                        <child type="suffix">
-                          <object class="GtkImage">
-                            <property name="icon-name">folder-symbolic</property>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Folders</property>
+                        <child>
+                          <object class="AdwActionRow" id="local_row">
+                            <property name="title" translatable="yes">Local Folder</property>
+                            <property name="subtitle" translatable="yes">Not selected</property>
+                            <property name="activatable">True</property>
+                            <child type="suffix">
+                              <object class="GtkImage">
+                                <property name="icon-name">folder-symbolic</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="remote_row">
+                            <property name="title" translatable="yes">Remote Folder</property>
+                            <property name="subtitle" translatable="yes">Not selected</property>
+                            <property name="activatable">True</property>
+                            <child type="suffix">
+                              <object class="GtkImage">
+                                <property name="icon-name">folder-remote-symbolic</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>
                     </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwPreferencesGroup">
-                    <property name="title" translatable="yes">Remote Folder</property>
                     <child>
-                      <object class="AdwActionRow" id="remote_folder_row">
-                        <property name="title" translatable="yes">Select Folder</property>
-                        <property name="subtitle">(none selected)</property>
-                        <property name="activatable">true</property>
-                        <child type="suffix">
-                          <object class="GtkImage">
-                            <property name="icon-name">network-server-symbolic</property>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Options</property>
+                        <child>
+                          <object class="AdwSwitchRow" id="mirror_switch">
+                            <property name="title" translatable="yes">Mirror Mode</property>
+                            <property name="subtitle" translatable="yes">Delete remote files that no longer exist locally</property>
                           </object>
                         </child>
                       </object>
                     </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwPreferencesGroup">
-                    <property name="title" translatable="yes">Mode</property>
                     <child>
-                      <object class="AdwActionRow">
-                        <property name="title" translatable="yes">Mirror mode</property>
-                        <property name="subtitle" translatable="yes">Delete remote files that no longer exist locally</property>
-                        <child type="suffix">
-                          <object class="GtkSwitch" id="mirror_switch">
-                            <property name="valign">center</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwPreferencesGroup">
-                    <child>
-                      <object class="GtkButton" id="save_button">
-                        <property name="label" translatable="yes">Save</property>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">12</property>
                         <property name="halign">center</property>
-                        <style>
-                          <class name="suggested-action"/>
-                        </style>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwPreferencesGroup">
-                    <child>
-                      <object class="GtkButton" id="delete_button">
-                        <property name="label" translatable="yes">Delete Target</property>
-                        <property name="halign">center</property>
-                        <property name="visible">false</property>
-                        <style>
-                          <class name="destructive-action"/>
-                        </style>
+                        <child>
+                          <object class="GtkButton" id="save_button">
+                            <property name="label" translatable="yes">Save</property>
+                            <style>
+                              <class name="suggested-action"/>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="delete_button">
+                            <property name="label" translatable="yes">Delete Target</property>
+                            <property name="visible">False</property>
+                            <style>
+                              <class name="destructive-action"/>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
                 </child>
               </object>
-            </property>
+            </child>
           </object>
         </property>
       </object>

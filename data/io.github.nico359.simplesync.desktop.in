@@ -1,10 +1,10 @@
 [Desktop Entry]
-Name=simplesync
+Name=SimpleSync
 Exec=simplesync
 Icon=io.github.nico359.simplesync
 Terminal=false
 Type=Application
-Categories=Utility;
-Keywords=GTK;
+Categories=Utility;Network;
+Keywords=GTK;Nextcloud;WebDAV;Sync;
 StartupNotify=true
 DBusActivatable=true

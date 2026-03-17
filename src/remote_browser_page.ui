@@ -16,80 +16,91 @@
                 </style>
               </object>
             </child>
-            <child type="end">
-              <object class="GtkButton" id="new_folder_button">
-                <property name="icon-name">folder-new-symbolic</property>
-                <property name="tooltip-text" translatable="yes">New Folder</property>
-              </object>
-            </child>
           </object>
         </child>
         <property name="content">
-          <object class="AdwClamp">
-            <property name="maximum-size">600</property>
-            <property name="child">
-              <object class="GtkStack" id="browser_stack">
-                <property name="margin-top">24</property>
-                <property name="margin-bottom">24</property>
-                <property name="margin-start">12</property>
-                <property name="margin-end">12</property>
-                <child>
-                  <object class="GtkStackPage">
-                    <property name="name">loading</property>
-                    <property name="child">
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <property name="spacing">12</property>
-                        <property name="halign">center</property>
-                        <property name="valign">center</property>
-                        <property name="vexpand">true</property>
-                        <child>
-                          <object class="GtkSpinner">
-                            <property name="spinning">true</property>
-                            <property name="width-request">32</property>
-                            <property name="height-request">32</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Loading…</property>
-                          </object>
-                        </child>
+          <object class="GtkStack" id="content_stack">
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">loading</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="halign">center</property>
+                    <property name="valign">center</property>
+                    <child>
+                      <object class="GtkSpinner" id="loading_spinner">
+                        <property name="spinning">True</property>
+                        <property name="width-request">32</property>
+                        <property name="height-request">32</property>
                       </object>
-                    </property>
+                    </child>
                   </object>
-                </child>
-                <child>
-                  <object class="GtkStackPage">
-                    <property name="name">content</property>
-                    <property name="child">
-                      <object class="GtkScrolledWindow">
-                        <property name="vexpand">true</property>
-                        <property name="child">
-                          <object class="GtkListBox" id="folders_listbox">
-                            <property name="selection-mode">none</property>
-                            <style>
-                              <class name="boxed-list"/>
-                            </style>
-                          </object>
-                        </property>
-                      </object>
-                    </property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkStackPage">
-                    <property name="name">error</property>
-                    <property name="child">
-                      <object class="AdwStatusPage" id="error_status">
-                        <property name="icon-name">dialog-error-symbolic</property>
-                        <property name="title" translatable="yes">Error</property>
-                      </object>
-                    </property>
-                  </object>
-                </child>
+                </property>
               </object>
-            </property>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">content</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkLabel" id="path_label">
+                        <property name="label">/</property>
+                        <property name="margin-top">8</property>
+                        <property name="margin-bottom">8</property>
+                        <property name="margin-start">12</property>
+                        <property name="margin-end">12</property>
+                        <property name="ellipsize">start</property>
+                        <style>
+                          <class name="dim-label"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="vexpand">True</property>
+                        <property name="hscrollbar-policy">never</property>
+                        <child>
+                          <object class="AdwClamp">
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                            <child>
+                              <object class="GtkListBox" id="folder_list">
+                                <style>
+                                  <class name="boxed-list"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="new_folder_button">
+                        <property name="icon-name">folder-new-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">New Folder</property>
+                        <property name="halign">center</property>
+                        <property name="margin-top">8</property>
+                        <property name="margin-bottom">8</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">error</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="error_status">
+                    <property name="icon-name">dialog-error-symbolic</property>
+                    <property name="title" translatable="yes">Connection Error</property>
+                  </object>
+                </property>
+              </object>
+            </child>
           </object>
         </property>
       </object>
