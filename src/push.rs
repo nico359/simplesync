@@ -2,7 +2,8 @@ use crate::db::Target;
 use crate::webdav::WebDAVClient;
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 
 #[derive(Debug, Clone, Default)]
 pub struct PushSummary {
@@ -10,10 +11,10 @@ pub struct PushSummary {
     pub skipped: u32,
     pub deleted: u32,
     pub errors: Vec<String>,
+    pub cancelled: bool,
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum PushProgress {
     File {
         current_file: String,
@@ -21,6 +22,7 @@ pub enum PushProgress {
         files_total: u32,
     },
     Complete {
+        #[allow(dead_code)]
         success: bool,
         summary: PushSummary,
     },
@@ -68,14 +70,15 @@ pub fn run_push(
     target: Target,
     db_path: std::path::PathBuf,
     force: bool,
+    cancel: Arc<AtomicBool>,
     sender: mpsc::Sender<PushProgress>,
 ) {
     std::thread::spawn(move || {
-        let result = do_push(&client, &target, &db_path, force, &sender);
+        let result = do_push(&client, &target, &db_path, force, &cancel, &sender);
         match result {
             Ok(summary) => {
                 let _ = sender.send(PushProgress::Complete {
-                    success: summary.errors.is_empty(),
+                    success: summary.errors.is_empty() && !summary.cancelled,
                     summary,
                 });
             }
@@ -97,22 +100,31 @@ fn do_push(
     target: &Target,
     db_path: &Path,
     force: bool,
+    cancel: &AtomicBool,
     sender: &mpsc::Sender<PushProgress>,
 ) -> Result<PushSummary, String> {
-    // Open a dedicated DB connection for this thread
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| format!("DB error: {}", e))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").ok();
 
     let mut summary = PushSummary::default();
 
+    if cancel.load(Ordering::Relaxed) {
+        summary.cancelled = true;
+        return Ok(summary);
+    }
+
     // Step 1: Collect local files
     let local_files = collect_local_files(&target.local_path)?;
-    let _files_total = local_files.len() as u32;
 
     if force {
         conn.execute("DELETE FROM file_state WHERE target_id = ?1",
             rusqlite::params![target.id]).ok();
+    }
+
+    if cancel.load(Ordering::Relaxed) {
+        summary.cancelled = true;
+        return Ok(summary);
     }
 
     // Step 2: Collect existing remote files to avoid overwriting
@@ -134,10 +146,9 @@ fn do_push(
         HashSet::new()
     };
 
-    // Step 3: Filter files that need uploading (changed since last push or not on remote)
+    // Step 3: Filter files that need uploading
     let mut to_upload: Vec<(String, f64, i64)> = Vec::new();
     for (rel_path, mtime, size) in &local_files {
-        // Check file_state DB first (tracks what we've already uploaded)
         let existing: Option<(f64, i64)> = conn.query_row(
             "SELECT mtime, size FROM file_state WHERE target_id = ?1 AND rel_path = ?2",
             rusqlite::params![target.id, rel_path],
@@ -150,14 +161,13 @@ fn do_push(
                 continue;
             }
         } else if remote_set.contains(rel_path.as_str()) {
-            // File exists on remote but not in our DB — skip it
             summary.skipped += 1;
             continue;
         }
         to_upload.push((rel_path.clone(), *mtime, *size));
     }
 
-    // Step 3: Create remote directories
+    // Step 4: Create remote directories
     let mut dirs: Vec<String> = to_upload.iter()
         .filter_map(|(rel, _, _)| {
             Path::new(rel).parent().map(|p| p.to_string_lossy().to_string())
@@ -169,8 +179,11 @@ fn do_push(
     dirs.sort();
 
     for dir in &dirs {
+        if cancel.load(Ordering::Relaxed) {
+            summary.cancelled = true;
+            return Ok(summary);
+        }
         let remote_dir = format!("{}/{}", target.remote_path.trim_end_matches('/'), dir);
-        // Create parent directories from top to bottom
         let parts: Vec<&str> = remote_dir.trim_start_matches('/').split('/').collect();
         let mut path_so_far = String::new();
         for part in parts {
@@ -185,9 +198,14 @@ fn do_push(
         }
     }
 
-    // Step 4: Upload files
+    // Step 5: Upload files
     let upload_total = to_upload.len() as u32;
     for (i, (rel_path, mtime, size)) in to_upload.iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            summary.cancelled = true;
+            break;
+        }
+
         let local_file = format!("{}/{}", target.local_path, rel_path);
         let remote_file = format!("{}/{}", target.remote_path.trim_end_matches('/'), rel_path);
 
@@ -200,7 +218,6 @@ fn do_push(
         match client.upload_file(&local_file, &remote_file) {
             Ok(()) => {
                 summary.uploaded += 1;
-                // Record file state
                 let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
                 conn.execute(
                     "INSERT INTO file_state (target_id, rel_path, mtime, size, uploaded_at)
@@ -215,8 +232,8 @@ fn do_push(
         }
     }
 
-    // Step 5: Mirror mode - delete remote files not in local
-    if target.mode == "mirror" {
+    // Step 6: Mirror mode - delete remote files not in local (skip if cancelled)
+    if target.mode == "mirror" && !cancel.load(Ordering::Relaxed) {
         match client.list_directory_recursive(&target.remote_path) {
             Ok(remote_files) => {
                 let local_set: HashSet<String> = local_files.iter()
@@ -226,6 +243,10 @@ fn do_push(
                     .collect();
 
                 for remote_file in remote_files {
+                    if cancel.load(Ordering::Relaxed) {
+                        summary.cancelled = true;
+                        break;
+                    }
                     if !local_set.contains(&remote_file) {
                         match client.delete(&remote_file) {
                             Ok(()) => summary.deleted += 1,
@@ -240,12 +261,14 @@ fn do_push(
         }
     }
 
-    // Step 6: Update last_push
-    let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    conn.execute(
-        "UPDATE targets SET last_push = ?1 WHERE id = ?2",
-        rusqlite::params![now, target.id],
-    ).ok();
+    // Step 7: Update last_push (even if partial)
+    if summary.uploaded > 0 {
+        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        conn.execute(
+            "UPDATE targets SET last_push = ?1 WHERE id = ?2",
+            rusqlite::params![now, target.id],
+        ).ok();
+    }
 
     Ok(summary)
 }

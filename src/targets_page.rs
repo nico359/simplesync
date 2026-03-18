@@ -1,7 +1,10 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::glib;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::db::Target;
 use crate::keyring;
@@ -29,6 +32,8 @@ mod imp {
         pub empty_add_button: TemplateChild<gtk::Button>,
 
         pub window: RefCell<Option<SimplesyncWindow>>,
+        pub busy: Cell<bool>,
+        pub active_cancel: RefCell<Option<Arc<AtomicBool>>>,
     }
 
     impl std::fmt::Debug for SimplesyncTargetsPage {
@@ -90,8 +95,29 @@ impl SimplesyncTargetsPage {
 
         let page = self.clone();
         self.imp().push_all_button.connect_clicked(move |_| {
-            page.push_all();
+            if page.imp().busy.get() {
+                // Cancel active operation
+                if let Some(flag) = page.imp().active_cancel.borrow().as_ref() {
+                    flag.store(true, Ordering::Relaxed);
+                }
+            } else {
+                page.push_all();
+            }
         });
+    }
+
+    fn set_busy(&self, busy: bool) {
+        self.imp().busy.set(busy);
+        if busy {
+            self.imp().push_all_button.set_icon_name("process-stop-symbolic");
+            self.imp().push_all_button.set_tooltip_text(Some("Cancel"));
+            self.imp().push_all_button.add_css_class("destructive-action");
+        } else {
+            self.imp().push_all_button.set_icon_name("emblem-synchronizing-symbolic");
+            self.imp().push_all_button.set_tooltip_text(Some("Push All"));
+            self.imp().push_all_button.remove_css_class("destructive-action");
+            *self.imp().active_cancel.borrow_mut() = None;
+        }
     }
 
     pub fn refresh_targets(&self) {
@@ -121,11 +147,11 @@ impl SimplesyncTargetsPage {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| target.local_path.clone());
 
-        let subtitle = format!("{} → {}", target.local_path, target.remote_path);
+        let original_subtitle = format!("{} → {}", target.local_path, target.remote_path);
 
         let row = adw::ActionRow::builder()
             .title(&local_name)
-            .subtitle(&subtitle)
+            .subtitle(&original_subtitle)
             .activatable(true)
             .build();
 
@@ -137,7 +163,6 @@ impl SimplesyncTargetsPage {
         if target.mode == "mirror" {
             mode_label.add_css_class("warning");
         }
-        row.add_suffix(&mode_label);
 
         let push_button = gtk::Button::builder()
             .icon_name("go-up-symbolic")
@@ -146,13 +171,6 @@ impl SimplesyncTargetsPage {
             .build();
         push_button.add_css_class("flat");
 
-        let target_id = target.id;
-        let page = self.clone();
-        push_button.connect_clicked(move |btn| {
-            page.push_target(target_id, Some(btn.clone()));
-        });
-        row.add_suffix(&push_button);
-
         let pull_button = gtk::Button::builder()
             .icon_name("go-down-symbolic")
             .valign(gtk::Align::Center)
@@ -160,18 +178,228 @@ impl SimplesyncTargetsPage {
             .build();
         pull_button.add_css_class("flat");
 
-        let target_id = target.id;
-        let page = self.clone();
-        pull_button.connect_clicked(move |btn| {
-            page.pull_target(target_id, Some(btn.clone()));
-        });
-        row.add_suffix(&pull_button);
+        let cancel_button = gtk::Button::builder()
+            .icon_name("process-stop-symbolic")
+            .valign(gtk::Align::Center)
+            .tooltip_text("Cancel")
+            .visible(false)
+            .build();
+        cancel_button.add_css_class("flat");
 
-        let target_id = target.id;
-        let page = self.clone();
-        row.connect_activated(move |_| {
-            page.show_edit_target(target_id);
-        });
+        row.add_suffix(&mode_label);
+        row.add_suffix(&push_button);
+        row.add_suffix(&pull_button);
+        row.add_suffix(&cancel_button);
+
+        // Shared cancel flag for this row
+        let cancel_flag: Rc<RefCell<Option<Arc<AtomicBool>>>> = Rc::new(RefCell::new(None));
+
+        // --- Push button ---
+        {
+            let page = self.clone();
+            let cancel_flag = cancel_flag.clone();
+            let push_btn = push_button.clone();
+            let pull_btn = pull_button.clone();
+            let cancel_btn = cancel_button.clone();
+            let row_ref = row.clone();
+            let orig_sub = original_subtitle.clone();
+            let target_id = target.id;
+
+            push_button.connect_clicked(move |_| {
+                if page.imp().busy.get() {
+                    page.window().show_toast("An operation is already in progress");
+                    return;
+                }
+
+                let creds = match keyring::load_credentials_sync() {
+                    Some(c) => c,
+                    None => {
+                        page.window().show_toast("No account configured. Set up an account first.");
+                        return;
+                    }
+                };
+
+                let target = match page.window().db().get_target(target_id) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        page.window().show_toast("Target not found");
+                        return;
+                    }
+                };
+
+                let flag = Arc::new(AtomicBool::new(false));
+                *cancel_flag.borrow_mut() = Some(flag.clone());
+                *page.imp().active_cancel.borrow_mut() = Some(flag.clone());
+                page.set_busy(true);
+
+                push_btn.set_visible(false);
+                pull_btn.set_visible(false);
+                cancel_btn.set_visible(true);
+                row_ref.set_subtitle("Preparing push…");
+
+                let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
+                let db_path = crate::db::Database::db_path();
+
+                let (tx, rx) = std::sync::mpsc::channel();
+                push::run_push(client, target, db_path, false, flag, tx);
+
+                let page = page.clone();
+                let push_btn = push_btn.clone();
+                let pull_btn = pull_btn.clone();
+                let cancel_btn = cancel_btn.clone();
+                let row_ref = row_ref.clone();
+                let orig_sub = orig_sub.clone();
+                let cancel_flag = cancel_flag.clone();
+
+                glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+                    while let Ok(progress) = rx.try_recv() {
+                        match progress {
+                            PushProgress::File { current_file, files_done, files_total } => {
+                                let name = std::path::Path::new(&current_file)
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or(current_file);
+                                row_ref.set_subtitle(&format!(
+                                    "Pushing {}/{}:  {}", files_done + 1, files_total, name
+                                ));
+                            }
+                            PushProgress::Complete { summary, .. } => {
+                                push_btn.set_visible(true);
+                                pull_btn.set_visible(true);
+                                cancel_btn.set_visible(false);
+                                row_ref.set_subtitle(&orig_sub);
+                                *cancel_flag.borrow_mut() = None;
+                                page.set_busy(false);
+
+                                let msg = if summary.cancelled {
+                                    format!("Push cancelled ({} uploaded)", summary.uploaded)
+                                } else if summary.errors.is_empty() {
+                                    format!("Done: {} uploaded, {} skipped", summary.uploaded, summary.skipped)
+                                } else {
+                                    format!("Completed with {} error(s)", summary.errors.len())
+                                };
+                                page.window().show_toast(&msg);
+                                page.refresh_targets();
+                                return glib::ControlFlow::Break;
+                            }
+                        }
+                    }
+                    glib::ControlFlow::Continue
+                });
+            });
+        }
+
+        // --- Pull button ---
+        {
+            let page = self.clone();
+            let cancel_flag = cancel_flag.clone();
+            let push_btn = push_button.clone();
+            let pull_btn = pull_button.clone();
+            let cancel_btn = cancel_button.clone();
+            let row_ref = row.clone();
+            let orig_sub = original_subtitle.clone();
+            let target_id = target.id;
+
+            pull_button.connect_clicked(move |_| {
+                if page.imp().busy.get() {
+                    page.window().show_toast("An operation is already in progress");
+                    return;
+                }
+
+                let creds = match keyring::load_credentials_sync() {
+                    Some(c) => c,
+                    None => {
+                        page.window().show_toast("No account configured. Set up an account first.");
+                        return;
+                    }
+                };
+
+                let target = match page.window().db().get_target(target_id) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        page.window().show_toast("Target not found");
+                        return;
+                    }
+                };
+
+                let flag = Arc::new(AtomicBool::new(false));
+                *cancel_flag.borrow_mut() = Some(flag.clone());
+                *page.imp().active_cancel.borrow_mut() = Some(flag.clone());
+                page.set_busy(true);
+
+                push_btn.set_visible(false);
+                pull_btn.set_visible(false);
+                cancel_btn.set_visible(true);
+                row_ref.set_subtitle("Preparing pull…");
+
+                let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
+
+                let (tx, rx) = std::sync::mpsc::channel();
+                pull::run_pull(client, target, flag, tx);
+
+                let page = page.clone();
+                let push_btn = push_btn.clone();
+                let pull_btn = pull_btn.clone();
+                let cancel_btn = cancel_btn.clone();
+                let row_ref = row_ref.clone();
+                let orig_sub = orig_sub.clone();
+                let cancel_flag = cancel_flag.clone();
+
+                glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+                    while let Ok(progress) = rx.try_recv() {
+                        match progress {
+                            PullProgress::File { current_file, files_done, files_total } => {
+                                let name = std::path::Path::new(&current_file)
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or(current_file);
+                                row_ref.set_subtitle(&format!(
+                                    "Pulling {}/{}:  {}", files_done + 1, files_total, name
+                                ));
+                            }
+                            PullProgress::Complete { summary, .. } => {
+                                push_btn.set_visible(true);
+                                pull_btn.set_visible(true);
+                                cancel_btn.set_visible(false);
+                                row_ref.set_subtitle(&orig_sub);
+                                *cancel_flag.borrow_mut() = None;
+                                page.set_busy(false);
+
+                                let msg = if summary.cancelled {
+                                    format!("Pull cancelled ({} downloaded)", summary.downloaded)
+                                } else if summary.errors.is_empty() {
+                                    format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped)
+                                } else {
+                                    format!("Pull completed with {} error(s)", summary.errors.len())
+                                };
+                                page.window().show_toast(&msg);
+                                return glib::ControlFlow::Break;
+                            }
+                        }
+                    }
+                    glib::ControlFlow::Continue
+                });
+            });
+        }
+
+        // --- Cancel button ---
+        {
+            let cancel_flag = cancel_flag.clone();
+            cancel_button.connect_clicked(move |_| {
+                if let Some(flag) = cancel_flag.borrow().as_ref() {
+                    flag.store(true, Ordering::Relaxed);
+                }
+            });
+        }
+
+        // --- Row activation (edit) ---
+        {
+            let target_id = target.id;
+            let page = self.clone();
+            row.connect_activated(move |_| {
+                page.show_edit_target(target_id);
+            });
+        }
 
         row
     }
@@ -196,109 +424,12 @@ impl SimplesyncTargetsPage {
         self.window().navigation_view().push(&edit_page);
     }
 
-    fn push_target(&self, target_id: i64, button: Option<gtk::Button>) {
-        let creds = match keyring::load_credentials_sync() {
-            Some(c) => c,
-            None => {
-                self.window().show_toast("No account configured. Set up an account first.");
-                return;
-            }
-        };
-
-        let window = self.window();
-        let target = match window.db().get_target(target_id) {
-            Ok(t) => t,
-            Err(_) => {
-                self.window().show_toast("Target not found");
-                return;
-            }
-        };
-
-        let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
-        let db_path = crate::db::Database::db_path();
-
-        if let Some(ref btn) = button {
-            btn.set_sensitive(false);
-        }
-
-        let (tx, rx) = std::sync::mpsc::channel();
-        push::run_push(client, target, db_path, false, tx);
-
-        let page = self.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
-            while let Ok(progress) = rx.try_recv() {
-                match progress {
-                    PushProgress::File { .. } => {}
-                    PushProgress::Complete { success, summary } => {
-                        if let Some(ref btn) = button {
-                            btn.set_sensitive(true);
-                        }
-                        let msg = if success {
-                            format!("Done: {} uploaded, {} skipped", summary.uploaded, summary.skipped)
-                        } else {
-                            format!("Completed with {} error(s)", summary.errors.len())
-                        };
-                        page.window().show_toast(&msg);
-                        page.refresh_targets();
-                        return glib::ControlFlow::Break;
-                    }
-                }
-            }
-            glib::ControlFlow::Continue
-        });
-    }
-
-    fn pull_target(&self, target_id: i64, button: Option<gtk::Button>) {
-        let creds = match keyring::load_credentials_sync() {
-            Some(c) => c,
-            None => {
-                self.window().show_toast("No account configured. Set up an account first.");
-                return;
-            }
-        };
-
-        let window = self.window();
-        let target = match window.db().get_target(target_id) {
-            Ok(t) => t,
-            Err(_) => {
-                self.window().show_toast("Target not found");
-                return;
-            }
-        };
-
-        let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
-
-        if let Some(ref btn) = button {
-            btn.set_sensitive(false);
-        }
-
-        let (tx, rx) = std::sync::mpsc::channel();
-        pull::run_pull(client, target, tx);
-
-        let page = self.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
-            while let Ok(progress) = rx.try_recv() {
-                match progress {
-                    PullProgress::File { .. } => {}
-                    PullProgress::Complete { success, summary } => {
-                        if let Some(ref btn) = button {
-                            btn.set_sensitive(true);
-                        }
-                        let msg = if success {
-                            format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped)
-                        } else {
-                            format!("Pull completed with {} error(s)", summary.errors.len())
-                        };
-                        page.window().show_toast(&msg);
-                        return glib::ControlFlow::Break;
-                    }
-                }
-            }
-            glib::ControlFlow::Continue
-        });
-    }
-
     fn push_all(&self) {
+        if self.imp().busy.get() {
+            self.window().show_toast("An operation is already in progress");
+            return;
+        }
+
         let window = self.window();
         let targets = window.db().get_targets().unwrap_or_default();
         if targets.is_empty() {
@@ -314,15 +445,22 @@ impl SimplesyncTargetsPage {
             }
         };
 
-        self.imp().push_all_button.set_sensitive(false);
+        let cancel = Arc::new(AtomicBool::new(false));
+        *self.imp().active_cancel.borrow_mut() = Some(cancel.clone());
+        self.set_busy(true);
+
         let target_ids: Vec<i64> = targets.iter().map(|t| t.id).collect();
-        self.push_sequential(target_ids, 0, creds);
+        self.push_sequential(target_ids, 0, creds, cancel);
     }
 
-    fn push_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials) {
-        if index >= target_ids.len() {
-            self.imp().push_all_button.set_sensitive(true);
-            self.window().show_toast("All targets pushed");
+    fn push_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
+        if cancel.load(Ordering::Relaxed) || index >= target_ids.len() {
+            self.set_busy(false);
+            if cancel.load(Ordering::Relaxed) {
+                self.window().show_toast("Push all cancelled");
+            } else {
+                self.window().show_toast("All targets pushed");
+            }
             self.refresh_targets();
             return;
         }
@@ -331,7 +469,7 @@ impl SimplesyncTargetsPage {
         let target = match window.db().get_target(target_ids[index]) {
             Ok(t) => t,
             Err(_) => {
-                self.push_sequential(target_ids, index + 1, creds);
+                self.push_sequential(target_ids, index + 1, creds, cancel);
                 return;
             }
         };
@@ -340,13 +478,13 @@ impl SimplesyncTargetsPage {
         let db_path = crate::db::Database::db_path();
 
         let (tx, rx) = std::sync::mpsc::channel();
-        push::run_push(client, target, db_path, false, tx);
+        push::run_push(client, target, db_path, false, cancel.clone(), tx);
 
         let page = self.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
             while let Ok(progress) = rx.try_recv() {
                 if let PushProgress::Complete { .. } = progress {
-                    page.push_sequential(target_ids.clone(), index + 1, creds.clone());
+                    page.push_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
                     return glib::ControlFlow::Break;
                 }
             }
