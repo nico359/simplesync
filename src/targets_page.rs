@@ -30,6 +30,8 @@ mod imp {
         pub targets_list: TemplateChild<gtk::ListBox>,
         #[template_child]
         pub empty_add_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub setup_account_button: TemplateChild<gtk::Button>,
 
         pub window: RefCell<Option<SimplesyncWindow>>,
         pub busy: Cell<bool>,
@@ -94,6 +96,12 @@ impl SimplesyncTargetsPage {
         });
 
         let page = self.clone();
+        self.imp().setup_account_button.connect_clicked(move |_| {
+            let app = page.window().application().unwrap();
+            app.activate_action("account", None);
+        });
+
+        let page = self.clone();
         self.imp().push_all_button.connect_clicked(move |_| {
             if page.imp().busy.get() {
                 // Cancel active operation
@@ -125,6 +133,14 @@ impl SimplesyncTargetsPage {
 
         while let Some(child) = list.first_child() {
             list.remove(&child);
+        }
+
+        // Check if account is configured
+        let has_account = keyring::load_credentials_sync().is_some();
+
+        if !has_account {
+            self.imp().content_stack.set_visible_child_name("no_account");
+            return;
         }
 
         let window = self.window();

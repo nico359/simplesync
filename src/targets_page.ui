@@ -34,6 +34,28 @@
           <object class="GtkStack" id="content_stack">
             <child>
               <object class="GtkStackPage">
+                <property name="name">no_account</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="no_account_status">
+                    <property name="icon-name">system-users-symbolic</property>
+                    <property name="title" translatable="yes">No Account</property>
+                    <property name="description" translatable="yes">Connect your Nextcloud account to start syncing</property>
+                    <property name="child">
+                      <object class="GtkButton" id="setup_account_button">
+                        <property name="label" translatable="yes">Set Up Account</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="suggested-action"/>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
                 <property name="name">empty</property>
                 <property name="child">
                   <object class="AdwStatusPage" id="empty_status">
