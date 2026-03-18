@@ -19,85 +19,130 @@
                 <property name="margin-start">12</property>
                 <property name="margin-end">12</property>
                 <child>
-                  <object class="GtkBox">
-                    <property name="orientation">vertical</property>
-                    <property name="spacing">24</property>
+                  <object class="GtkStack" id="account_stack">
+                    <!-- Logged out state -->
                     <child>
-                      <object class="AdwPreferencesGroup">
-                        <property name="title" translatable="yes">Server</property>
-                        <child>
-                          <object class="AdwEntryRow" id="server_entry">
-                            <property name="title" translatable="yes">Server URL</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="AdwEntryRow" id="username_entry">
-                            <property name="title" translatable="yes">Username</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="AdwPasswordEntryRow" id="password_entry">
-                            <property name="title" translatable="yes">App Password</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <property name="spacing">12</property>
-                        <child>
-                          <object class="GtkButton" id="test_button">
-                            <property name="label" translatable="yes">Test Connection</property>
-                            <property name="halign">center</property>
-                            <style>
-                              <class name="pill"/>
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkBox" id="test_status_box">
-                            <property name="orientation">horizontal</property>
-                            <property name="halign">center</property>
-                            <property name="spacing">8</property>
+                      <object class="GtkStackPage">
+                        <property name="name">logged_out</property>
+                        <property name="child">
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">24</property>
                             <child>
-                              <object class="GtkSpinner" id="test_spinner">
-                                <property name="visible">False</property>
+                              <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Server</property>
+                                <child>
+                                  <object class="AdwEntryRow" id="server_entry">
+                                    <property name="title" translatable="yes">Server URL</property>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkLabel" id="test_label">
-                                <property name="label"></property>
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">12</property>
+                                <property name="halign">center</property>
+                                <child>
+                                  <object class="GtkButton" id="login_button">
+                                    <property name="label" translatable="yes">Login with Nextcloud</property>
+                                    <style>
+                                      <class name="suggested-action"/>
+                                      <class name="pill"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkBox">
+                                    <property name="orientation">horizontal</property>
+                                    <property name="halign">center</property>
+                                    <property name="spacing">8</property>
+                                    <child>
+                                      <object class="GtkSpinner" id="login_spinner">
+                                        <property name="visible">False</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkLabel" id="login_label">
+                                        <property name="label"></property>
+                                        <property name="wrap">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                           </object>
-                        </child>
+                        </property>
                       </object>
                     </child>
+                    <!-- Logged in state -->
                     <child>
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <property name="spacing">12</property>
-                        <property name="halign">center</property>
-                        <child>
-                          <object class="GtkButton" id="save_button">
-                            <property name="label" translatable="yes">Save</property>
-                            <style>
-                              <class name="suggested-action"/>
-                              <class name="pill"/>
-                            </style>
+                      <object class="GtkStackPage">
+                        <property name="name">logged_in</property>
+                        <property name="child">
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">24</property>
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Connected Account</property>
+                                <child>
+                                  <object class="AdwActionRow" id="server_row">
+                                    <property name="title" translatable="yes">Server</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwActionRow" id="username_row">
+                                    <property name="title" translatable="yes">Username</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">12</property>
+                                <child>
+                                  <object class="GtkButton" id="test_button">
+                                    <property name="label" translatable="yes">Test Connection</property>
+                                    <property name="halign">center</property>
+                                    <style>
+                                      <class name="pill"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkBox">
+                                    <property name="orientation">horizontal</property>
+                                    <property name="halign">center</property>
+                                    <property name="spacing">8</property>
+                                    <child>
+                                      <object class="GtkSpinner" id="test_spinner">
+                                        <property name="visible">False</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkLabel" id="test_label">
+                                        <property name="label"></property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="remove_button">
+                                <property name="label" translatable="yes">Remove Account</property>
+                                <property name="halign">center</property>
+                                <style>
+                                  <class name="destructive-action"/>
+                                  <class name="pill"/>
+                                </style>
+                              </object>
+                            </child>
                           </object>
-                        </child>
-                        <child>
-                          <object class="GtkButton" id="remove_button">
-                            <property name="label" translatable="yes">Remove Account</property>
-                            <property name="visible">False</property>
-                            <style>
-                              <class name="destructive-action"/>
-                              <class name="pill"/>
-                            </style>
-                          </object>
-                        </child>
+                        </property>
                       </object>
                     </child>
                   </object>

@@ -1471,6 +1471,8 @@ dependencies = [
  "reqwest",
  "roxmltree",
  "rusqlite",
+ "serde",
+ "serde_json",
  "walkdir",
 ]
 
