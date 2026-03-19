@@ -23,8 +23,14 @@
               </object>
             </child>
             <child type="end">
+              <object class="GtkButton" id="pull_all_button">
+                <property name="icon-name">go-down-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Pull All</property>
+              </object>
+            </child>
+            <child type="end">
               <object class="GtkButton" id="push_all_button">
-                <property name="icon-name">emblem-synchronizing-symbolic</property>
+                <property name="icon-name">go-up-symbolic</property>
                 <property name="tooltip-text" translatable="yes">Push All</property>
               </object>
             </child>

@@ -32,6 +32,8 @@ mod imp {
         pub empty_add_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub setup_account_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub pull_all_button: TemplateChild<gtk::Button>,
 
         pub window: RefCell<Option<SimplesyncWindow>>,
         pub busy: Cell<bool>,
@@ -104,12 +106,22 @@ impl SimplesyncTargetsPage {
         let page = self.clone();
         self.imp().push_all_button.connect_clicked(move |_| {
             if page.imp().busy.get() {
-                // Cancel active operation
                 if let Some(flag) = page.imp().active_cancel.borrow().as_ref() {
                     flag.store(true, Ordering::Relaxed);
                 }
             } else {
                 page.push_all();
+            }
+        });
+
+        let page = self.clone();
+        self.imp().pull_all_button.connect_clicked(move |_| {
+            if page.imp().busy.get() {
+                if let Some(flag) = page.imp().active_cancel.borrow().as_ref() {
+                    flag.store(true, Ordering::Relaxed);
+                }
+            } else {
+                page.pull_all();
             }
         });
     }
@@ -120,10 +132,16 @@ impl SimplesyncTargetsPage {
             self.imp().push_all_button.set_icon_name("process-stop-symbolic");
             self.imp().push_all_button.set_tooltip_text(Some("Cancel"));
             self.imp().push_all_button.add_css_class("destructive-action");
+            self.imp().pull_all_button.set_icon_name("process-stop-symbolic");
+            self.imp().pull_all_button.set_tooltip_text(Some("Cancel"));
+            self.imp().pull_all_button.add_css_class("destructive-action");
         } else {
-            self.imp().push_all_button.set_icon_name("emblem-synchronizing-symbolic");
+            self.imp().push_all_button.set_icon_name("go-up-symbolic");
             self.imp().push_all_button.set_tooltip_text(Some("Push All"));
             self.imp().push_all_button.remove_css_class("destructive-action");
+            self.imp().pull_all_button.set_icon_name("go-down-symbolic");
+            self.imp().pull_all_button.set_tooltip_text(Some("Pull All"));
+            self.imp().pull_all_button.remove_css_class("destructive-action");
             *self.imp().active_cancel.borrow_mut() = None;
         }
     }
@@ -501,6 +519,73 @@ impl SimplesyncTargetsPage {
             while let Ok(progress) = rx.try_recv() {
                 if let PushProgress::Complete { .. } = progress {
                     page.push_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
+                    return glib::ControlFlow::Break;
+                }
+            }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    fn pull_all(&self) {
+        if self.imp().busy.get() {
+            self.window().show_toast("An operation is already in progress");
+            return;
+        }
+
+        let window = self.window();
+        let targets = window.db().get_targets().unwrap_or_default();
+        if targets.is_empty() {
+            self.window().show_toast("No targets to pull");
+            return;
+        }
+
+        let creds = match keyring::load_credentials_sync() {
+            Some(c) => c,
+            None => {
+                self.window().show_toast("No account configured");
+                return;
+            }
+        };
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        *self.imp().active_cancel.borrow_mut() = Some(cancel.clone());
+        self.set_busy(true);
+
+        let target_ids: Vec<i64> = targets.iter().map(|t| t.id).collect();
+        self.pull_sequential(target_ids, 0, creds, cancel);
+    }
+
+    fn pull_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
+        if cancel.load(Ordering::Relaxed) || index >= target_ids.len() {
+            self.set_busy(false);
+            if cancel.load(Ordering::Relaxed) {
+                self.window().show_toast("Pull all cancelled");
+            } else {
+                self.window().show_toast("All targets pulled");
+            }
+            self.refresh_targets();
+            return;
+        }
+
+        let window = self.window();
+        let target = match window.db().get_target(target_ids[index]) {
+            Ok(t) => t,
+            Err(_) => {
+                self.pull_sequential(target_ids, index + 1, creds, cancel);
+                return;
+            }
+        };
+
+        let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        pull::run_pull(client, target, cancel.clone(), tx);
+
+        let page = self.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+            while let Ok(progress) = rx.try_recv() {
+                if let PullProgress::Complete { .. } = progress {
+                    page.pull_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
                     return glib::ControlFlow::Break;
                 }
             }
