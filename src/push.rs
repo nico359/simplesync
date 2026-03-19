@@ -15,6 +15,13 @@ pub struct PushSummary {
 }
 
 #[derive(Debug, Clone)]
+pub struct PushPlan {
+    pub to_upload: u32,
+    pub to_skip: u32,
+    pub is_mirror: bool,
+}
+
+#[derive(Debug, Clone)]
 pub enum PushProgress {
     File {
         current_file: String,
@@ -61,6 +68,61 @@ fn collect_local_files(local_path: &str) -> Result<Vec<(String, f64, i64)>, Stri
     }
 
     Ok(files)
+}
+
+/// Scan and return what a push would do without transferring any files.
+pub fn plan_push(
+    client: &WebDAVClient,
+    target: &Target,
+    db_path: &Path,
+) -> Result<PushPlan, String> {
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| format!("DB error: {}", e))?;
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").ok();
+
+    let local_files = collect_local_files(&target.local_path)?;
+
+    let remote_set: HashSet<String> = match client.list_directory_recursive(&target.remote_path) {
+        Ok(files) => {
+            let remote_base = target.remote_path.trim_end_matches('/');
+            files.iter()
+                .filter_map(|f| {
+                    f.trim_start_matches('/')
+                        .strip_prefix(remote_base.trim_start_matches('/'))
+                        .map(|rel| rel.trim_start_matches('/').to_string())
+                })
+                .collect()
+        }
+        Err(_) => HashSet::new(),
+    };
+
+    let mut to_upload: u32 = 0;
+    let mut to_skip: u32 = 0;
+
+    for (rel_path, mtime, size) in &local_files {
+        let existing: Option<(f64, i64)> = conn.query_row(
+            "SELECT mtime, size FROM file_state WHERE target_id = ?1 AND rel_path = ?2",
+            rusqlite::params![target.id, rel_path],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).ok();
+
+        if let Some((old_mtime, old_size)) = existing {
+            if (old_mtime - mtime).abs() < 0.001 && old_size == *size {
+                to_skip += 1;
+                continue;
+            }
+        } else if remote_set.contains(rel_path.as_str()) {
+            to_skip += 1;
+            continue;
+        }
+        to_upload += 1;
+    }
+
+    Ok(PushPlan {
+        to_upload,
+        to_skip,
+        is_mirror: target.mode == "mirror",
+    })
 }
 
 /// Run a push operation for a single target on a background thread.

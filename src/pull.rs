@@ -13,6 +13,12 @@ pub struct PullSummary {
 }
 
 #[derive(Debug, Clone)]
+pub struct PullPlan {
+    pub to_download: u32,
+    pub to_skip: u32,
+}
+
+#[derive(Debug, Clone)]
 pub enum PullProgress {
     File {
         current_file: String,
@@ -24,6 +30,39 @@ pub enum PullProgress {
         success: bool,
         summary: PullSummary,
     },
+}
+
+/// Scan and return what a pull would do without transferring any files.
+pub fn plan_pull(
+    client: &WebDAVClient,
+    target: &Target,
+) -> Result<PullPlan, String> {
+    let remote_files = client.list_directory_recursive(&target.remote_path)
+        .map_err(|e| format!("Failed to list remote files: {}", e))?;
+
+    let remote_base = target.remote_path.trim_end_matches('/');
+    let mut to_download: u32 = 0;
+    let mut to_skip: u32 = 0;
+
+    for remote_file in &remote_files {
+        let rel_path = remote_file.trim_start_matches('/')
+            .strip_prefix(remote_base.trim_start_matches('/'))
+            .unwrap_or(remote_file)
+            .trim_start_matches('/');
+
+        if rel_path.is_empty() {
+            continue;
+        }
+
+        let local_file = format!("{}/{}", target.local_path, rel_path);
+        if Path::new(&local_file).exists() {
+            to_skip += 1;
+        } else {
+            to_download += 1;
+        }
+    }
+
+    Ok(PullPlan { to_download, to_skip })
 }
 
 /// Run a pull operation for a single target on a background thread.

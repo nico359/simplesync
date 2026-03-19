@@ -261,64 +261,148 @@ impl SimplesyncTargetsPage {
                     }
                 };
 
-                let flag = Arc::new(AtomicBool::new(false));
-                *cancel_flag.borrow_mut() = Some(flag.clone());
-                *page.imp().active_cancel.borrow_mut() = Some(flag.clone());
-                page.set_busy(true);
-
-                push_btn.set_visible(false);
-                pull_btn.set_visible(false);
-                cancel_btn.set_visible(true);
-                row_ref.set_subtitle("Preparing push…");
+                // Scan first
+                row_ref.set_subtitle("Scanning…");
+                push_btn.set_sensitive(false);
+                pull_btn.set_sensitive(false);
 
                 let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
                 let db_path = crate::db::Database::db_path();
 
-                let (tx, rx) = std::sync::mpsc::channel();
-                push::run_push(client, target, db_path, false, flag, tx);
+                let target_clone = target.clone();
+                let db_path_clone = db_path.clone();
+                let (plan_tx, plan_rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let result = push::plan_push(&client, &target_clone, &db_path_clone);
+                    let _ = plan_tx.send(result);
+                });
 
                 let page = page.clone();
                 let push_btn = push_btn.clone();
                 let pull_btn = pull_btn.clone();
                 let cancel_btn = cancel_btn.clone();
+                let cancel_flag = cancel_flag.clone();
                 let row_ref = row_ref.clone();
                 let orig_sub = orig_sub.clone();
-                let cancel_flag = cancel_flag.clone();
+                let target = Rc::new(target);
 
-                glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
-                    while let Ok(progress) = rx.try_recv() {
-                        match progress {
-                            PushProgress::File { current_file, files_done, files_total } => {
-                                let name = std::path::Path::new(&current_file)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or(current_file);
-                                row_ref.set_subtitle(&format!(
-                                    "Pushing {}/{}:  {}", files_done + 1, files_total, name
-                                ));
-                            }
-                            PushProgress::Complete { summary, .. } => {
-                                push_btn.set_visible(true);
-                                pull_btn.set_visible(true);
-                                cancel_btn.set_visible(false);
-                                row_ref.set_subtitle(&orig_sub);
-                                *cancel_flag.borrow_mut() = None;
-                                page.set_busy(false);
+                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    match plan_rx.try_recv() {
+                        Ok(Ok(plan)) => {
+                            row_ref.set_subtitle(&orig_sub);
+                            push_btn.set_sensitive(true);
+                            pull_btn.set_sensitive(true);
 
-                                let msg = if summary.cancelled {
-                                    format!("Push cancelled ({} uploaded)", summary.uploaded)
-                                } else if summary.errors.is_empty() {
-                                    format!("Done: {} uploaded, {} skipped", summary.uploaded, summary.skipped)
-                                } else {
-                                    format!("Completed with {} error(s)", summary.errors.len())
-                                };
-                                page.window().show_toast(&msg);
-                                page.refresh_targets();
+                            if plan.to_upload == 0 {
+                                page.window().show_toast("Nothing to push — all files up to date");
                                 return glib::ControlFlow::Break;
                             }
+
+                            let mut body = format!(
+                                "{} file(s) to upload, {} to skip",
+                                plan.to_upload, plan.to_skip
+                            );
+                            if plan.is_mirror {
+                                body.push_str("\n\nMirror mode: remote files not in local will be deleted");
+                            }
+
+                            let dialog = adw::AlertDialog::builder()
+                                .heading("Push")
+                                .body(&body)
+                                .build();
+                            dialog.add_responses(&[("cancel", "Cancel"), ("push", "Push")]);
+                            dialog.set_response_appearance("push", adw::ResponseAppearance::Suggested);
+                            dialog.set_default_response(Some("cancel"));
+
+                            let page_for_dialog = page.clone();
+                            let push_btn = push_btn.clone();
+                            let pull_btn = pull_btn.clone();
+                            let cancel_btn = cancel_btn.clone();
+                            let cancel_flag = cancel_flag.clone();
+                            let row_ref = row_ref.clone();
+                            let orig_sub = orig_sub.clone();
+                            let creds = creds.clone();
+                            let target = target.clone();
+
+                            dialog.connect_response(None, move |_, response| {
+                                if response != "push" {
+                                    return;
+                                }
+
+                                let flag = Arc::new(AtomicBool::new(false));
+                                *cancel_flag.borrow_mut() = Some(flag.clone());
+                                *page_for_dialog.imp().active_cancel.borrow_mut() = Some(flag.clone());
+                                page_for_dialog.set_busy(true);
+
+                                push_btn.set_visible(false);
+                                pull_btn.set_visible(false);
+                                cancel_btn.set_visible(true);
+                                row_ref.set_subtitle("Preparing push…");
+
+                                let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
+                                let db_path = crate::db::Database::db_path();
+
+                                let (tx, rx) = std::sync::mpsc::channel();
+                                push::run_push(client, (*target).clone(), db_path, false, flag, tx);
+
+                                let page = page_for_dialog.clone();
+                                let push_btn = push_btn.clone();
+                                let pull_btn = pull_btn.clone();
+                                let cancel_btn = cancel_btn.clone();
+                                let row_ref = row_ref.clone();
+                                let orig_sub = orig_sub.clone();
+                                let cancel_flag = cancel_flag.clone();
+
+                                glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+                                    while let Ok(progress) = rx.try_recv() {
+                                        match progress {
+                                            PushProgress::File { current_file, files_done, files_total } => {
+                                                let name = std::path::Path::new(&current_file)
+                                                    .file_name()
+                                                    .map(|n| n.to_string_lossy().to_string())
+                                                    .unwrap_or(current_file);
+                                                row_ref.set_subtitle(&format!(
+                                                    "Pushing {}/{}:  {}", files_done + 1, files_total, name
+                                                ));
+                                            }
+                                            PushProgress::Complete { summary, .. } => {
+                                                push_btn.set_visible(true);
+                                                pull_btn.set_visible(true);
+                                                cancel_btn.set_visible(false);
+                                                row_ref.set_subtitle(&orig_sub);
+                                                *cancel_flag.borrow_mut() = None;
+                                                page.set_busy(false);
+
+                                                let msg = if summary.cancelled {
+                                                    format!("Push cancelled ({} uploaded)", summary.uploaded)
+                                                } else if summary.errors.is_empty() {
+                                                    format!("Done: {} uploaded, {} skipped", summary.uploaded, summary.skipped)
+                                                } else {
+                                                    format!("Completed with {} error(s)", summary.errors.len())
+                                                };
+                                                page.window().show_toast(&msg);
+                                                page.refresh_targets();
+                                                return glib::ControlFlow::Break;
+                                            }
+                                        }
+                                    }
+                                    glib::ControlFlow::Continue
+                                });
+                            });
+
+                            dialog.present(Some(&page.window()));
+                            glib::ControlFlow::Break
                         }
+                        Ok(Err(e)) => {
+                            row_ref.set_subtitle(&orig_sub);
+                            push_btn.set_sensitive(true);
+                            pull_btn.set_sensitive(true);
+                            page.window().show_toast(&format!("Scan failed: {}", e));
+                            glib::ControlFlow::Break
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                        Err(_) => glib::ControlFlow::Break,
                     }
-                    glib::ControlFlow::Continue
                 });
             });
         }
@@ -356,62 +440,141 @@ impl SimplesyncTargetsPage {
                     }
                 };
 
-                let flag = Arc::new(AtomicBool::new(false));
-                *cancel_flag.borrow_mut() = Some(flag.clone());
-                *page.imp().active_cancel.borrow_mut() = Some(flag.clone());
-                page.set_busy(true);
-
-                push_btn.set_visible(false);
-                pull_btn.set_visible(false);
-                cancel_btn.set_visible(true);
-                row_ref.set_subtitle("Preparing pull…");
+                // Scan first
+                row_ref.set_subtitle("Scanning…");
+                push_btn.set_sensitive(false);
+                pull_btn.set_sensitive(false);
 
                 let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
 
-                let (tx, rx) = std::sync::mpsc::channel();
-                pull::run_pull(client, target, flag, tx);
+                let target_clone = target.clone();
+                let (plan_tx, plan_rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let result = pull::plan_pull(&client, &target_clone);
+                    let _ = plan_tx.send(result);
+                });
 
                 let page = page.clone();
                 let push_btn = push_btn.clone();
                 let pull_btn = pull_btn.clone();
                 let cancel_btn = cancel_btn.clone();
+                let cancel_flag = cancel_flag.clone();
                 let row_ref = row_ref.clone();
                 let orig_sub = orig_sub.clone();
-                let cancel_flag = cancel_flag.clone();
+                let target = Rc::new(target);
 
-                glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
-                    while let Ok(progress) = rx.try_recv() {
-                        match progress {
-                            PullProgress::File { current_file, files_done, files_total } => {
-                                let name = std::path::Path::new(&current_file)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or(current_file);
-                                row_ref.set_subtitle(&format!(
-                                    "Pulling {}/{}:  {}", files_done + 1, files_total, name
-                                ));
-                            }
-                            PullProgress::Complete { summary, .. } => {
-                                push_btn.set_visible(true);
-                                pull_btn.set_visible(true);
-                                cancel_btn.set_visible(false);
-                                row_ref.set_subtitle(&orig_sub);
-                                *cancel_flag.borrow_mut() = None;
-                                page.set_busy(false);
+                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    match plan_rx.try_recv() {
+                        Ok(Ok(plan)) => {
+                            row_ref.set_subtitle(&orig_sub);
+                            push_btn.set_sensitive(true);
+                            pull_btn.set_sensitive(true);
 
-                                let msg = if summary.cancelled {
-                                    format!("Pull cancelled ({} downloaded)", summary.downloaded)
-                                } else if summary.errors.is_empty() {
-                                    format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped)
-                                } else {
-                                    format!("Pull completed with {} error(s)", summary.errors.len())
-                                };
-                                page.window().show_toast(&msg);
+                            if plan.to_download == 0 {
+                                page.window().show_toast("Nothing to pull — all files up to date");
                                 return glib::ControlFlow::Break;
                             }
+
+                            let body = format!(
+                                "{} file(s) to download, {} to skip",
+                                plan.to_download, plan.to_skip
+                            );
+
+                            let dialog = adw::AlertDialog::builder()
+                                .heading("Pull")
+                                .body(&body)
+                                .build();
+                            dialog.add_responses(&[("cancel", "Cancel"), ("pull", "Pull")]);
+                            dialog.set_response_appearance("pull", adw::ResponseAppearance::Suggested);
+                            dialog.set_default_response(Some("cancel"));
+
+                            let page_for_dialog = page.clone();
+                            let push_btn = push_btn.clone();
+                            let pull_btn = pull_btn.clone();
+                            let cancel_btn = cancel_btn.clone();
+                            let cancel_flag = cancel_flag.clone();
+                            let row_ref = row_ref.clone();
+                            let orig_sub = orig_sub.clone();
+                            let creds = creds.clone();
+                            let target = target.clone();
+
+                            dialog.connect_response(None, move |_, response| {
+                                if response != "pull" {
+                                    return;
+                                }
+
+                                let flag = Arc::new(AtomicBool::new(false));
+                                *cancel_flag.borrow_mut() = Some(flag.clone());
+                                *page_for_dialog.imp().active_cancel.borrow_mut() = Some(flag.clone());
+                                page_for_dialog.set_busy(true);
+
+                                push_btn.set_visible(false);
+                                pull_btn.set_visible(false);
+                                cancel_btn.set_visible(true);
+                                row_ref.set_subtitle("Preparing pull…");
+
+                                let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
+
+                                let (tx, rx) = std::sync::mpsc::channel();
+                                pull::run_pull(client, (*target).clone(), flag, tx);
+
+                                let page = page_for_dialog.clone();
+                                let push_btn = push_btn.clone();
+                                let pull_btn = pull_btn.clone();
+                                let cancel_btn = cancel_btn.clone();
+                                let row_ref = row_ref.clone();
+                                let orig_sub = orig_sub.clone();
+                                let cancel_flag = cancel_flag.clone();
+
+                                glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+                                    while let Ok(progress) = rx.try_recv() {
+                                        match progress {
+                                            PullProgress::File { current_file, files_done, files_total } => {
+                                                let name = std::path::Path::new(&current_file)
+                                                    .file_name()
+                                                    .map(|n| n.to_string_lossy().to_string())
+                                                    .unwrap_or(current_file);
+                                                row_ref.set_subtitle(&format!(
+                                                    "Pulling {}/{}:  {}", files_done + 1, files_total, name
+                                                ));
+                                            }
+                                            PullProgress::Complete { summary, .. } => {
+                                                push_btn.set_visible(true);
+                                                pull_btn.set_visible(true);
+                                                cancel_btn.set_visible(false);
+                                                row_ref.set_subtitle(&orig_sub);
+                                                *cancel_flag.borrow_mut() = None;
+                                                page.set_busy(false);
+
+                                                let msg = if summary.cancelled {
+                                                    format!("Pull cancelled ({} downloaded)", summary.downloaded)
+                                                } else if summary.errors.is_empty() {
+                                                    format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped)
+                                                } else {
+                                                    format!("Pull completed with {} error(s)", summary.errors.len())
+                                                };
+                                                page.window().show_toast(&msg);
+                                                return glib::ControlFlow::Break;
+                                            }
+                                        }
+                                    }
+                                    glib::ControlFlow::Continue
+                                });
+                            });
+
+                            dialog.present(Some(&page.window()));
+                            glib::ControlFlow::Break
                         }
+                        Ok(Err(e)) => {
+                            row_ref.set_subtitle(&orig_sub);
+                            push_btn.set_sensitive(true);
+                            pull_btn.set_sensitive(true);
+                            page.window().show_toast(&format!("Scan failed: {}", e));
+                            glib::ControlFlow::Break
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                        Err(_) => glib::ControlFlow::Break,
                     }
-                    glib::ControlFlow::Continue
                 });
             });
         }
