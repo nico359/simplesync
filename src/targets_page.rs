@@ -648,12 +648,80 @@ impl SimplesyncTargetsPage {
             }
         };
 
-        let cancel = Arc::new(AtomicBool::new(false));
-        *self.imp().active_cancel.borrow_mut() = Some(cancel.clone());
-        self.set_busy(true);
+        // Scan all targets first
+        let db_path = crate::db::Database::db_path();
+        let targets_clone: Vec<_> = targets.clone();
+        let creds_clone = creds.clone();
+        let db_path_clone = db_path.clone();
+        let (plan_tx, plan_rx) = std::sync::mpsc::channel();
 
+        std::thread::spawn(move || {
+            let mut total_upload = 0u32;
+            let mut total_skip = 0u32;
+            let mut any_mirror = false;
+            for target in &targets_clone {
+                let client = WebDAVClient::new(&creds_clone.server_url, &creds_clone.username, &creds_clone.app_password);
+                match push::plan_push(&client, target, &db_path_clone) {
+                    Ok(plan) => {
+                        total_upload += plan.to_upload;
+                        total_skip += plan.to_skip;
+                        if plan.is_mirror { any_mirror = true; }
+                    }
+                    Err(_) => {}
+                }
+            }
+            let _ = plan_tx.send((total_upload, total_skip, any_mirror));
+        });
+
+        let page = self.clone();
         let target_ids: Vec<i64> = targets.iter().map(|t| t.id).collect();
-        self.push_sequential(target_ids, 0, creds, cancel);
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            match plan_rx.try_recv() {
+                Ok((total_upload, total_skip, any_mirror)) => {
+                    if total_upload == 0 {
+                        page.window().show_toast("Nothing to push — all files up to date");
+                        return glib::ControlFlow::Break;
+                    }
+
+                    let mut body = format!(
+                        "{} file(s) to upload, {} to skip across {} target(s)",
+                        total_upload, total_skip, target_ids.len()
+                    );
+                    if any_mirror {
+                        body.push_str("\n\nMirror mode: remote files not in local will be deleted");
+                    }
+
+                    let dialog = adw::AlertDialog::builder()
+                        .heading("Push All")
+                        .body(&body)
+                        .build();
+                    dialog.add_responses(&[("cancel", "Cancel"), ("push", "Push All")]);
+                    dialog.set_response_appearance("push", adw::ResponseAppearance::Suggested);
+                    dialog.set_default_response(Some("cancel"));
+
+                    let page_for_dialog = page.clone();
+                    let creds = creds.clone();
+                    let target_ids = target_ids.clone();
+                    dialog.connect_response(None, move |_, response| {
+                        if response != "push" {
+                            return;
+                        }
+                        let cancel = Arc::new(AtomicBool::new(false));
+                        *page_for_dialog.imp().active_cancel.borrow_mut() = Some(cancel.clone());
+                        page_for_dialog.set_busy(true);
+                        page_for_dialog.push_sequential(target_ids.clone(), 0, creds.clone(), cancel);
+                    });
+
+                    dialog.present(Some(&page.window()));
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(_) => {
+                    page.window().show_toast("Failed to scan targets");
+                    glib::ControlFlow::Break
+                }
+            }
+        });
     }
 
     fn push_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
@@ -716,12 +784,73 @@ impl SimplesyncTargetsPage {
             }
         };
 
-        let cancel = Arc::new(AtomicBool::new(false));
-        *self.imp().active_cancel.borrow_mut() = Some(cancel.clone());
-        self.set_busy(true);
+        // Scan all targets first
+        let targets_clone: Vec<_> = targets.clone();
+        let creds_clone = creds.clone();
+        let (plan_tx, plan_rx) = std::sync::mpsc::channel();
 
+        std::thread::spawn(move || {
+            let mut total_download = 0u32;
+            let mut total_skip = 0u32;
+            for target in &targets_clone {
+                let client = WebDAVClient::new(&creds_clone.server_url, &creds_clone.username, &creds_clone.app_password);
+                match pull::plan_pull(&client, target) {
+                    Ok(plan) => {
+                        total_download += plan.to_download;
+                        total_skip += plan.to_skip;
+                    }
+                    Err(_) => {}
+                }
+            }
+            let _ = plan_tx.send((total_download, total_skip));
+        });
+
+        let page = self.clone();
         let target_ids: Vec<i64> = targets.iter().map(|t| t.id).collect();
-        self.pull_sequential(target_ids, 0, creds, cancel);
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            match plan_rx.try_recv() {
+                Ok((total_download, total_skip)) => {
+                    if total_download == 0 {
+                        page.window().show_toast("Nothing to pull — all files up to date");
+                        return glib::ControlFlow::Break;
+                    }
+
+                    let body = format!(
+                        "{} file(s) to download, {} to skip across {} target(s)",
+                        total_download, total_skip, target_ids.len()
+                    );
+
+                    let dialog = adw::AlertDialog::builder()
+                        .heading("Pull All")
+                        .body(&body)
+                        .build();
+                    dialog.add_responses(&[("cancel", "Cancel"), ("pull", "Pull All")]);
+                    dialog.set_response_appearance("pull", adw::ResponseAppearance::Suggested);
+                    dialog.set_default_response(Some("cancel"));
+
+                    let page_for_dialog = page.clone();
+                    let creds = creds.clone();
+                    let target_ids = target_ids.clone();
+                    dialog.connect_response(None, move |_, response| {
+                        if response != "pull" {
+                            return;
+                        }
+                        let cancel = Arc::new(AtomicBool::new(false));
+                        *page_for_dialog.imp().active_cancel.borrow_mut() = Some(cancel.clone());
+                        page_for_dialog.set_busy(true);
+                        page_for_dialog.pull_sequential(target_ids.clone(), 0, creds.clone(), cancel);
+                    });
+
+                    dialog.present(Some(&page.window()));
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(_) => {
+                    page.window().show_toast("Failed to scan targets");
+                    glib::ControlFlow::Break
+                }
+            }
+        });
     }
 
     fn pull_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
