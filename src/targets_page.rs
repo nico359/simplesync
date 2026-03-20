@@ -103,6 +103,12 @@ impl SimplesyncTargetsPage {
             app.activate_action("account", None);
         });
 
+        // Refresh when page becomes visible again (e.g. after returning from account page)
+        let page = self.clone();
+        self.connect_map(move |_| {
+            page.refresh_targets();
+        });
+
         let page = self.clone();
         self.imp().push_all_button.connect_clicked(move |_| {
             if page.imp().busy.get() {
