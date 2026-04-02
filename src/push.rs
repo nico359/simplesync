@@ -18,6 +18,7 @@ pub struct PushSummary {
 pub struct PushPlan {
     pub to_upload: u32,
     pub to_skip: u32,
+    pub to_delete: u32,
     pub is_mirror: bool,
 }
 
@@ -125,9 +126,18 @@ pub fn plan_push(
         to_upload += 1;
     }
 
+    // In mirror mode, count remote files that have no local counterpart
+    let to_delete = if target.mode == "mirror" {
+        let local_set: HashSet<&str> = local_files.iter().map(|(r, _, _)| r.as_str()).collect();
+        remote_set.iter().filter(|r| !local_set.contains(r.as_str())).count() as u32
+    } else {
+        0
+    };
+
     Ok(PushPlan {
         to_upload,
         to_skip,
+        to_delete,
         is_mirror: target.mode == "mirror",
     })
 }

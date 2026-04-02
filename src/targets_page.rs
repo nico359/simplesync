@@ -318,7 +318,7 @@ impl SimplesyncTargetsPage {
                             push_btn.set_sensitive(true);
                             pull_btn.set_sensitive(true);
 
-                            if plan.to_upload == 0 {
+                            if plan.to_upload == 0 && plan.to_delete == 0 {
                                 page.window().show_toast("Nothing to push — all files up to date");
                                 return glib::ControlFlow::Break;
                             }
@@ -327,8 +327,13 @@ impl SimplesyncTargetsPage {
                                 "{} file(s) to upload, {} to skip",
                                 plan.to_upload, plan.to_skip
                             );
-                            if plan.is_mirror {
-                                body.push_str("\n\nMirror mode: remote files not in local will be deleted");
+                            if plan.to_delete > 0 {
+                                body.push_str(&format!(
+                                    "\n\n⚠️ Mirror mode: {} remote file(s) will be permanently deleted",
+                                    plan.to_delete
+                                ));
+                            } else if plan.is_mirror {
+                                body.push_str("\n\nMirror mode: no remote files to delete");
                             }
 
                             let dialog = adw::AlertDialog::builder()
@@ -336,7 +341,12 @@ impl SimplesyncTargetsPage {
                                 .body(&body)
                                 .build();
                             dialog.add_responses(&[("cancel", "Cancel"), ("push", "Push")]);
-                            dialog.set_response_appearance("push", adw::ResponseAppearance::Suggested);
+                            let push_appearance = if plan.to_delete > 0 {
+                                adw::ResponseAppearance::Destructive
+                            } else {
+                                adw::ResponseAppearance::Suggested
+                            };
+                            dialog.set_response_appearance("push", push_appearance);
                             dialog.set_default_response(Some("cancel"));
 
                             let page_for_dialog = page.clone();
@@ -691,27 +701,27 @@ impl SimplesyncTargetsPage {
         std::thread::spawn(move || {
             let mut total_upload = 0u32;
             let mut total_skip = 0u32;
-            let mut any_mirror = false;
+            let mut total_delete = 0u32;
             for target in &targets_clone {
                 let client = WebDAVClient::new(&creds_clone.server_url, &creds_clone.username, &creds_clone.app_password);
                 match push::plan_push(&client, target, &db_path_clone) {
                     Ok(plan) => {
                         total_upload += plan.to_upload;
                         total_skip += plan.to_skip;
-                        if plan.is_mirror { any_mirror = true; }
+                        total_delete += plan.to_delete;
                     }
                     Err(_) => {}
                 }
             }
-            let _ = plan_tx.send((total_upload, total_skip, any_mirror));
+            let _ = plan_tx.send((total_upload, total_skip, total_delete));
         });
 
         let page = self.clone();
         let target_ids: Vec<i64> = targets.iter().map(|t| t.id).collect();
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             match plan_rx.try_recv() {
-                Ok((total_upload, total_skip, any_mirror)) => {
-                    if total_upload == 0 {
+                Ok((total_upload, total_skip, total_delete)) => {
+                    if total_upload == 0 && total_delete == 0 {
                         page.window().show_toast("Nothing to push — all files up to date");
                         return glib::ControlFlow::Break;
                     }
@@ -720,8 +730,11 @@ impl SimplesyncTargetsPage {
                         "{} file(s) to upload, {} to skip across {} target(s)",
                         total_upload, total_skip, target_ids.len()
                     );
-                    if any_mirror {
-                        body.push_str("\n\nMirror mode: remote files not in local will be deleted");
+                    if total_delete > 0 {
+                        body.push_str(&format!(
+                            "\n\n⚠️ Mirror mode: {} remote file(s) will be permanently deleted",
+                            total_delete
+                        ));
                     }
 
                     let dialog = adw::AlertDialog::builder()
@@ -729,7 +742,12 @@ impl SimplesyncTargetsPage {
                         .body(&body)
                         .build();
                     dialog.add_responses(&[("cancel", "Cancel"), ("push", "Push All")]);
-                    dialog.set_response_appearance("push", adw::ResponseAppearance::Suggested);
+                    let push_appearance = if total_delete > 0 {
+                        adw::ResponseAppearance::Destructive
+                    } else {
+                        adw::ResponseAppearance::Suggested
+                    };
+                    dialog.set_response_appearance("push", push_appearance);
                     dialog.set_default_response(Some("cancel"));
 
                     let page_for_dialog = page.clone();
