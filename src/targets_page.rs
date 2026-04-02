@@ -104,9 +104,12 @@ impl SimplesyncTargetsPage {
         });
 
         // Refresh when page becomes visible again (e.g. after returning from account page)
+        // but not during an active operation — that would destroy in-progress rows.
         let page = self.clone();
         self.connect_map(move |_| {
-            page.refresh_targets();
+            if !page.imp().busy.get() {
+                page.refresh_targets();
+            }
         });
 
         let page = self.clone();
