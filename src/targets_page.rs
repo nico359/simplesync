@@ -398,17 +398,18 @@ impl SimplesyncTargetsPage {
                                                 *cancel_flag.borrow_mut() = None;
                                                 page.set_busy(false);
 
-                                                let msg = if summary.cancelled {
-                                                    format!("Push cancelled ({} uploaded)", summary.uploaded)
+                                                if summary.cancelled {
+                                                    page.window().show_toast(&format!("Push cancelled ({} uploaded)", summary.uploaded));
                                                 } else if summary.errors.is_empty() {
-                                                    format!("Done: {} uploaded, {} skipped", summary.uploaded, summary.skipped)
+                                                    page.window().show_toast(&format!("Done: {} uploaded, {} skipped", summary.uploaded, summary.skipped));
                                                 } else if summary.uploaded == 0 && summary.skipped == 0 {
-                                                    // Fatal pre-flight error — show the actual message
-                                                    summary.errors.first().cloned().unwrap_or_else(|| "Push failed".to_string())
+                                                    // Fatal pre-flight error
+                                                    page.window().show_toast(summary.errors.first().map(|s| s.as_str()).unwrap_or("Push failed"));
                                                 } else {
-                                                    format!("Push completed with {} error(s)", summary.errors.len())
-                                                };
-                                                page.window().show_toast(&msg);
+                                                    // Partial failure — show details dialog
+                                                    let heading = format!("{} file(s) failed to upload", summary.errors.len());
+                                                    page.show_errors_dialog(&heading, &summary.errors);
+                                                }
                                                 page.refresh_targets();
                                                 return glib::ControlFlow::Break;
                                             }
@@ -578,16 +579,16 @@ impl SimplesyncTargetsPage {
                                                 *cancel_flag.borrow_mut() = None;
                                                 page.set_busy(false);
 
-                                                let msg = if summary.cancelled {
-                                                    format!("Pull cancelled ({} downloaded)", summary.downloaded)
+                                                if summary.cancelled {
+                                                    page.window().show_toast(&format!("Pull cancelled ({} downloaded)", summary.downloaded));
                                                 } else if summary.errors.is_empty() {
-                                                    format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped)
+                                                    page.window().show_toast(&format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped));
                                                 } else if summary.downloaded == 0 && summary.skipped == 0 {
-                                                    summary.errors.first().cloned().unwrap_or_else(|| "Pull failed".to_string())
+                                                    page.window().show_toast(summary.errors.first().map(|s| s.as_str()).unwrap_or("Pull failed"));
                                                 } else {
-                                                    format!("Pull completed with {} error(s)", summary.errors.len())
-                                                };
-                                                page.window().show_toast(&msg);
+                                                    let heading = format!("{} file(s) failed to download", summary.errors.len());
+                                                    page.show_errors_dialog(&heading, &summary.errors);
+                                                }
                                                 return glib::ControlFlow::Break;
                                             }
                                         }
@@ -741,7 +742,7 @@ impl SimplesyncTargetsPage {
                         let cancel = Arc::new(AtomicBool::new(false));
                         *page_for_dialog.imp().active_cancel.borrow_mut() = Some(cancel.clone());
                         page_for_dialog.set_busy(true);
-                        page_for_dialog.push_sequential(target_ids.clone(), 0, creds.clone(), cancel);
+                        page_for_dialog.push_sequential(target_ids.clone(), 0, creds.clone(), cancel, Vec::new());
                     });
 
                     dialog.present(Some(&page.window()));
@@ -782,13 +783,47 @@ impl SimplesyncTargetsPage {
         true
     }
 
-    fn push_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
+    /// Show a scrollable dialog listing every failed file and its reason.
+    fn show_errors_dialog(&self, heading: &str, errors: &[String]) {
+        let dialog = adw::AlertDialog::builder()
+            .heading(heading)
+            .build();
+        dialog.add_response("close", "Close");
+        dialog.set_default_response(Some("close"));
+
+        let text_view = gtk::TextView::builder()
+            .editable(false)
+            .cursor_visible(false)
+            .wrap_mode(gtk::WrapMode::WordChar)
+            .monospace(true)
+            .top_margin(6)
+            .bottom_margin(6)
+            .left_margin(8)
+            .right_margin(8)
+            .build();
+        text_view.buffer().set_text(&errors.join("\n"));
+
+        let scroll = gtk::ScrolledWindow::builder()
+            .min_content_height(160)
+            .max_content_height(320)
+            .min_content_width(340)
+            .child(&text_view)
+            .build();
+
+        dialog.set_extra_child(Some(&scroll));
+        dialog.present(Some(self));
+    }
+
+    fn push_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>, all_errors: Vec<String>) {
         if cancel.load(Ordering::Relaxed) || index >= target_ids.len() {
             self.set_busy(false);
             if cancel.load(Ordering::Relaxed) {
                 self.window().show_toast("Push all cancelled");
-            } else {
+            } else if all_errors.is_empty() {
                 self.window().show_toast("All targets pushed");
+            } else {
+                let heading = format!("{} file(s) failed to upload", all_errors.len());
+                self.show_errors_dialog(&heading, &all_errors);
             }
             self.refresh_targets();
             return;
@@ -798,7 +833,7 @@ impl SimplesyncTargetsPage {
         let target = match window.db().get_target(target_ids[index]) {
             Ok(t) => t,
             Err(_) => {
-                self.push_sequential(target_ids, index + 1, creds, cancel);
+                self.push_sequential(target_ids, index + 1, creds, cancel, all_errors);
                 return;
             }
         };
@@ -815,6 +850,10 @@ impl SimplesyncTargetsPage {
 
         let page = self.clone();
         let target_id = target.id;
+        let target_name = std::path::Path::new(&target.local_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| target.local_path.clone());
         glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
             while let Ok(progress) = rx.try_recv() {
                 match progress {
@@ -829,12 +868,15 @@ impl SimplesyncTargetsPage {
                             ));
                         }
                     }
-                    PushProgress::Complete { .. } => {
+                    PushProgress::Complete { summary, .. } => {
                         if let Some(row) = page.find_row(target_id) {
-                            // refresh_targets will rebuild rows; just clear for now
                             row.set_subtitle("");
                         }
-                        page.push_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
+                        let mut next_errors = all_errors.clone();
+                        for e in &summary.errors {
+                            next_errors.push(format!("[{}] {}", target_name, e));
+                        }
+                        page.push_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone(), next_errors);
                         return glib::ControlFlow::Break;
                     }
                 }
@@ -922,7 +964,7 @@ impl SimplesyncTargetsPage {
                         let cancel = Arc::new(AtomicBool::new(false));
                         *page_for_dialog.imp().active_cancel.borrow_mut() = Some(cancel.clone());
                         page_for_dialog.set_busy(true);
-                        page_for_dialog.pull_sequential(target_ids.clone(), 0, creds.clone(), cancel);
+                        page_for_dialog.pull_sequential(target_ids.clone(), 0, creds.clone(), cancel, Vec::new());
                     });
 
                     dialog.present(Some(&page.window()));
@@ -937,13 +979,16 @@ impl SimplesyncTargetsPage {
         });
     }
 
-    fn pull_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
+    fn pull_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>, all_errors: Vec<String>) {
         if cancel.load(Ordering::Relaxed) || index >= target_ids.len() {
             self.set_busy(false);
             if cancel.load(Ordering::Relaxed) {
                 self.window().show_toast("Pull all cancelled");
-            } else {
+            } else if all_errors.is_empty() {
                 self.window().show_toast("All targets pulled");
+            } else {
+                let heading = format!("{} file(s) failed to download", all_errors.len());
+                self.show_errors_dialog(&heading, &all_errors);
             }
             self.refresh_targets();
             return;
@@ -953,7 +998,7 @@ impl SimplesyncTargetsPage {
         let target = match window.db().get_target(target_ids[index]) {
             Ok(t) => t,
             Err(_) => {
-                self.pull_sequential(target_ids, index + 1, creds, cancel);
+                self.pull_sequential(target_ids, index + 1, creds, cancel, all_errors);
                 return;
             }
         };
@@ -969,6 +1014,10 @@ impl SimplesyncTargetsPage {
 
         let page = self.clone();
         let target_id = target.id;
+        let target_name = std::path::Path::new(&target.local_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| target.local_path.clone());
         glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
             while let Ok(progress) = rx.try_recv() {
                 match progress {
@@ -983,11 +1032,15 @@ impl SimplesyncTargetsPage {
                             ));
                         }
                     }
-                    PullProgress::Complete { .. } => {
+                    PullProgress::Complete { summary, .. } => {
                         if let Some(row) = page.find_row(target_id) {
                             row.set_subtitle("");
                         }
-                        page.pull_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
+                        let mut next_errors = all_errors.clone();
+                        for e in &summary.errors {
+                            next_errors.push(format!("[{}] {}", target_name, e));
+                        }
+                        page.pull_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone(), next_errors);
                         return glib::ControlFlow::Break;
                     }
                 }
