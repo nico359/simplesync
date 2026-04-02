@@ -106,11 +106,11 @@ impl SimplesyncApplication {
             .application_icon("io.github.nico359.simplesync")
             .developer_name("nico359")
             .version(VERSION)
-            .developers(vec!["nico359", "GitHub Copilot CLI (Claude Opus 4.6)"])
+            .developers(vec!["nico359", "GitHub Copilot CLI (Claude)"])
             .translator_credits(&gettext("translator-credits"))
             .copyright("© 2026 nico359")
             .license_type(gtk::License::Gpl30)
-            .comments("A simple file sync tool for Nextcloud and WebDAV servers.\n\nBuilt with the assistance of AI (GitHub Copilot CLI, powered by Claude Opus 4.6).")
+            .comments("A simple file sync tool for Nextcloud and WebDAV servers.\n\nBuilt with the assistance of AI (GitHub Copilot CLI, powered by Claude).")
             .website("https://github.com/nico359/cloudsend")
             .issue_url("https://github.com/nico359/cloudsend/issues")
             .build();
