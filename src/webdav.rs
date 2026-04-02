@@ -85,6 +85,38 @@ impl WebDAVClient {
         }
     }
 
+    /// Check whether a remote path exists. Returns Ok(true), Ok(false) for 404,
+    /// or Err for network/auth failures.
+    pub fn path_exists(&self, remote_path: &str) -> Result<bool, WebDAVError> {
+        let path = remote_path.trim_matches('/');
+        let url = if path.is_empty() {
+            format!("{}/", self.base_url())
+        } else {
+            format!("{}/{}/", self.base_url(), encode_path(path))
+        };
+
+        let client = self.client()?;
+        let resp = client
+            .request(reqwest::Method::from_bytes(b"PROPFIND").unwrap(), &url)
+            .header("Authorization", self.auth_header())
+            .header("Depth", "0")
+            .header("Content-Type", "application/xml")
+            .body(r#"<?xml version="1.0" encoding="UTF-8"?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop>
+    <d:resourcetype/>
+  </d:prop>
+</d:propfind>"#)
+            .send()
+            .map_err(|e| WebDAVError::Http(e.to_string()))?;
+
+        match resp.status().as_u16() {
+            207 | 200 => Ok(true),
+            404 => Ok(false),
+            status => Err(WebDAVError::Http(format!("Server returned status {}", status))),
+        }
+    }
+
     /// List contents of a remote directory
     pub fn list_directory(&self, remote_path: &str) -> Result<Vec<RemoteItem>, WebDAVError> {
         let path = remote_path.trim_matches('/');

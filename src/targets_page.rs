@@ -1,6 +1,6 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gtk::glib;
+use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,6 +34,8 @@ mod imp {
         pub setup_account_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub pull_all_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub network_banner: TemplateChild<adw::Banner>,
 
         pub window: RefCell<Option<SimplesyncWindow>>,
         pub busy: Cell<bool>,
@@ -111,6 +113,15 @@ impl SimplesyncTargetsPage {
                 page.refresh_targets();
             }
         });
+
+        // Network monitor — show/hide the offline banner
+        let monitor = gio::NetworkMonitor::default();
+        let page = self.clone();
+        monitor.connect_network_changed(move |monitor, _| {
+            page.imp().network_banner.set_revealed(!monitor.is_network_available());
+        });
+        // Set initial state
+        self.imp().network_banner.set_revealed(!monitor.is_network_available());
 
         let page = self.clone();
         self.imp().push_all_button.connect_clicked(move |_| {
@@ -255,6 +266,10 @@ impl SimplesyncTargetsPage {
                     return;
                 }
 
+                if !page.check_network() {
+                    return;
+                }
+
                 let creds = match keyring::load_credentials_sync() {
                     Some(c) => c,
                     None => {
@@ -387,8 +402,11 @@ impl SimplesyncTargetsPage {
                                                     format!("Push cancelled ({} uploaded)", summary.uploaded)
                                                 } else if summary.errors.is_empty() {
                                                     format!("Done: {} uploaded, {} skipped", summary.uploaded, summary.skipped)
+                                                } else if summary.uploaded == 0 && summary.skipped == 0 {
+                                                    // Fatal pre-flight error — show the actual message
+                                                    summary.errors.first().cloned().unwrap_or_else(|| "Push failed".to_string())
                                                 } else {
-                                                    format!("Completed with {} error(s)", summary.errors.len())
+                                                    format!("Push completed with {} error(s)", summary.errors.len())
                                                 };
                                                 page.window().show_toast(&msg);
                                                 page.refresh_targets();
@@ -431,6 +449,10 @@ impl SimplesyncTargetsPage {
             pull_button.connect_clicked(move |_| {
                 if page.imp().busy.get() {
                     page.window().show_toast("An operation is already in progress");
+                    return;
+                }
+
+                if !page.check_network() {
                     return;
                 }
 
@@ -560,6 +582,8 @@ impl SimplesyncTargetsPage {
                                                     format!("Pull cancelled ({} downloaded)", summary.downloaded)
                                                 } else if summary.errors.is_empty() {
                                                     format!("Done: {} downloaded, {} skipped", summary.downloaded, summary.skipped)
+                                                } else if summary.downloaded == 0 && summary.skipped == 0 {
+                                                    summary.errors.first().cloned().unwrap_or_else(|| "Pull failed".to_string())
                                                 } else {
                                                     format!("Pull completed with {} error(s)", summary.errors.len())
                                                 };
@@ -634,6 +658,10 @@ impl SimplesyncTargetsPage {
     fn push_all(&self) {
         if self.imp().busy.get() {
             self.window().show_toast("An operation is already in progress");
+            return;
+        }
+
+        if !self.check_network() {
             return;
         }
 
@@ -745,6 +773,15 @@ impl SimplesyncTargetsPage {
         }
     }
 
+    /// Returns false and shows a toast if there is no network connectivity.
+    fn check_network(&self) -> bool {
+        if !gio::NetworkMonitor::default().is_network_available() {
+            self.window().show_toast("No network connection");
+            return false;
+        }
+        true
+    }
+
     fn push_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
         if cancel.load(Ordering::Relaxed) || index >= target_ids.len() {
             self.set_busy(false);
@@ -809,6 +846,10 @@ impl SimplesyncTargetsPage {
     fn pull_all(&self) {
         if self.imp().busy.get() {
             self.window().show_toast("An operation is already in progress");
+            return;
+        }
+
+        if !self.check_network() {
             return;
         }
 

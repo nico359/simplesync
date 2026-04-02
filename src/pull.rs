@@ -37,6 +37,13 @@ pub fn plan_pull(
     client: &WebDAVClient,
     target: &Target,
 ) -> Result<PullPlan, String> {
+    // Pre-flight: verify remote folder exists
+    match client.path_exists(&target.remote_path) {
+        Ok(false) => return Err(format!("Remote folder not found: {}", target.remote_path)),
+        Err(e) => return Err(format!("Cannot reach server: {}", e)),
+        Ok(true) => {}
+    }
+
     let remote_files = client.list_directory_recursive(&target.remote_path)
         .map_err(|e| format!("Failed to list remote files: {}", e))?;
 
@@ -105,6 +112,13 @@ fn do_pull(
     if cancel.load(Ordering::Relaxed) {
         summary.cancelled = true;
         return Ok(summary);
+    }
+
+    // Pre-flight: verify remote folder still exists
+    match client.path_exists(&target.remote_path) {
+        Ok(false) => return Err(format!("Remote folder not found: {}", target.remote_path)),
+        Err(e) => return Err(format!("Cannot reach server: {}", e)),
+        Ok(true) => {}
     }
 
     let remote_files = client.list_directory_recursive(&target.remote_path)

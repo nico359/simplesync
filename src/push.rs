@@ -76,6 +76,13 @@ pub fn plan_push(
     target: &Target,
     db_path: &Path,
 ) -> Result<PushPlan, String> {
+    // Pre-flight: verify remote folder exists
+    match client.path_exists(&target.remote_path) {
+        Ok(false) => return Err(format!("Remote folder not found: {}", target.remote_path)),
+        Err(e) => return Err(format!("Cannot reach server: {}", e)),
+        Ok(true) => {}
+    }
+
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| format!("DB error: {}", e))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").ok();
@@ -174,6 +181,13 @@ fn do_push(
     if cancel.load(Ordering::Relaxed) {
         summary.cancelled = true;
         return Ok(summary);
+    }
+
+    // Pre-flight: verify remote folder still exists
+    match client.path_exists(&target.remote_path) {
+        Ok(false) => return Err(format!("Remote folder not found: {}", target.remote_path)),
+        Err(e) => return Err(format!("Cannot reach server: {}", e)),
+        Ok(true) => {}
     }
 
     // Step 1: Collect local files
