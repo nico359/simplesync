@@ -194,6 +194,7 @@ impl SimplesyncTargetsPage {
             .subtitle(&original_subtitle)
             .activatable(true)
             .build();
+        row.set_widget_name(&target.id.to_string());
 
         let mode_label = gtk::Label::builder()
             .label(if target.mode == "mirror" { "Mirror" } else { "Upload" })
@@ -724,6 +725,23 @@ impl SimplesyncTargetsPage {
         });
     }
 
+    fn find_row(&self, target_id: i64) -> Option<adw::ActionRow> {
+        let name = target_id.to_string();
+        let list = &self.imp().targets_list;
+        let mut i = 0;
+        loop {
+            match list.row_at_index(i) {
+                Some(row) => {
+                    if row.widget_name() == name {
+                        return row.downcast::<adw::ActionRow>().ok();
+                    }
+                    i += 1;
+                }
+                None => return None,
+            }
+        }
+    }
+
     fn push_sequential(&self, target_ids: Vec<i64>, index: usize, creds: keyring::Credentials, cancel: Arc<AtomicBool>) {
         if cancel.load(Ordering::Relaxed) || index >= target_ids.len() {
             self.set_busy(false);
@@ -749,14 +767,36 @@ impl SimplesyncTargetsPage {
         let db_path = crate::db::Database::db_path();
 
         let (tx, rx) = std::sync::mpsc::channel();
-        push::run_push(client, target, db_path, false, cancel.clone(), tx);
+        push::run_push(client, target.clone(), db_path, false, cancel.clone(), tx);
+
+        if let Some(row) = self.find_row(target.id) {
+            row.set_subtitle("Preparing push…");
+        }
 
         let page = self.clone();
+        let target_id = target.id;
         glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
             while let Ok(progress) = rx.try_recv() {
-                if let PushProgress::Complete { .. } = progress {
-                    page.push_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
-                    return glib::ControlFlow::Break;
+                match progress {
+                    PushProgress::File { current_file, files_done, files_total } => {
+                        if let Some(row) = page.find_row(target_id) {
+                            let name = std::path::Path::new(&current_file)
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or(current_file);
+                            row.set_subtitle(&format!(
+                                "Pushing {}/{}:  {}", files_done + 1, files_total, name
+                            ));
+                        }
+                    }
+                    PushProgress::Complete { .. } => {
+                        if let Some(row) = page.find_row(target_id) {
+                            // refresh_targets will rebuild rows; just clear for now
+                            row.set_subtitle("");
+                        }
+                        page.push_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
+                        return glib::ControlFlow::Break;
+                    }
                 }
             }
             glib::ControlFlow::Continue
@@ -877,14 +917,35 @@ impl SimplesyncTargetsPage {
         let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
 
         let (tx, rx) = std::sync::mpsc::channel();
-        pull::run_pull(client, target, cancel.clone(), tx);
+        pull::run_pull(client, target.clone(), cancel.clone(), tx);
+
+        if let Some(row) = self.find_row(target.id) {
+            row.set_subtitle("Preparing pull…");
+        }
 
         let page = self.clone();
+        let target_id = target.id;
         glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
             while let Ok(progress) = rx.try_recv() {
-                if let PullProgress::Complete { .. } = progress {
-                    page.pull_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
-                    return glib::ControlFlow::Break;
+                match progress {
+                    PullProgress::File { current_file, files_done, files_total } => {
+                        if let Some(row) = page.find_row(target_id) {
+                            let name = std::path::Path::new(&current_file)
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or(current_file);
+                            row.set_subtitle(&format!(
+                                "Pulling {}/{}:  {}", files_done + 1, files_total, name
+                            ));
+                        }
+                    }
+                    PullProgress::Complete { .. } => {
+                        if let Some(row) = page.find_row(target_id) {
+                            row.set_subtitle("");
+                        }
+                        page.pull_sequential(target_ids.clone(), index + 1, creds.clone(), cancel.clone());
+                        return glib::ControlFlow::Break;
+                    }
                 }
             }
             glib::ControlFlow::Continue
