@@ -115,6 +115,11 @@ impl SimplesyncApplication {
             .issue_url("https://github.com/nico359/cloudsend/issues")
             .build();
 
+        about.add_credit_section(
+            Some(&gettext("Inspired by")),
+            &["UBsync by belohoub https://github.com/belohoub/UBsync"],
+        );
+
         about.present(Some(&window));
     }
 }

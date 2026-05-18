@@ -14,18 +14,79 @@
     <name>nico359</name>
   </developer>
 
+  <icon type="stock">io.github.nico359.simplesync</icon>
+
   <url type="homepage">https://github.com/nico359/cloudsend</url>
   <url type="vcs-browser">https://github.com/nico359/cloudsend</url>
   <url type="bugtracker">https://github.com/nico359/cloudsend/issues</url>
+
+  <recommends>
+    <display_length compare="ge">360</display_length>
+    <control>touch</control>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+  <supports>
+    <control>touch</control>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
 
   <translation type="gettext">simplesync</translation>
   <launchable type="desktop-id">io.github.nico359.simplesync.desktop</launchable>
   <content_rating type="oars-1.1" />
 
   <releases>
-    <release version="0.2.0" date="2026-03-17">
+    <release version="1.1.1" date="2026-05-18">
       <description translate="no">
-        <p>Rust rewrite for improved performance and lower memory usage.</p>
+        <p>No major changes to the App itself.</p>
+        <ul>
+          <li>Added note about UBSync to the Credits section in the App</li>
+          <li>Added appstream metainfo</li>
+          <li>Slight changes to the manifest (full home directory access for sync both ways)</li>
+          <li>Built with Flatpak Builder instead of Gnome Builder because of the appstream metainfo</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.1.0" date="2026-04-02">
+      <description translate="no">
+        <p>Not very groundbreaking but still important stuff.</p>
+        <ul>
+          <li>Progress indicator is now shown even when using push/pull all instead of just with the individual targets</li>
+          <li>Progress indicator doesn't disappear anymore when clicking away from the overview while a transfer is in progress</li>
+          <li>App now checks if the folder is even available (in case you changed it on the server)</li>
+          <li>App also checks for network access before attempting to push or pull</li>
+          <li>More information is shown in case of a failure - useful when a few files fail during a large transfer</li>
+          <li>Deletions are counted as well if mirror mode is enabled and the app warns you more clearly when you are about to delete something</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.0.0" date="2026-03-20">
+      <description translate="no">
+        <p>Decided it is time for 1.0.0.</p>
+        <ul>
+          <li>Implemented Nextcloud Login Flow v2 so you don't have to manually create an app password if you use 2FA</li>
+          <li>Added option to cancel ongoing up- or downloads</li>
+          <li>Added confirmation dialog that shows what is about to be done before actually doing anything</li>
+          <li>Added a more intuitive startup page that prompts you to set up an account first if not configured</li>
+          <li>Bumped GNOME runtime to version 50</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-03-18">
+      <description translate="no">
+        <p>First release after the Rust rewrite.</p>
+        <ul>
+          <li>New icon</li>
+          <li>Project got renamed to SimpleSync</li>
+          <li>Ability to pull content from the remote instead of just pushing</li>
+          <li>Fixed a bug which would overwrite files on the remote even though they have the same name (now it just skips those)</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-03-13">
+      <description translate="no">
+        <p>Initial release.</p>
       </description>
     </release>
   </releases>
