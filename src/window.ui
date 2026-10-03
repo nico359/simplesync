@@ -4,8 +4,8 @@
   <requires lib="Adw" version="1.0"/>
   <template class="SimplesyncWindow" parent="AdwApplicationWindow">
     <property name="title" translatable="yes">SimpleSync</property>
-    <property name="default-width">400</property>
-    <property name="default-height">700</property>
+    <property name="default-width">800</property>
+    <property name="default-height">600</property>
     <property name="content">
       <object class="AdwToastOverlay" id="toast_overlay">
         <property name="child">
