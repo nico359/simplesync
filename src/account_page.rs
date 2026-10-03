@@ -27,6 +27,21 @@ struct LoginPollResponse {
     app_password: String,
 }
 
+/// Normalize a user-entered server address.
+///
+/// Like GNOME Settings, we accept a bare host name and assume `https://` when
+/// no scheme is given, so users don't have to type it.
+fn normalize_server_url(input: &str) -> String {
+    let trimmed = input.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        String::new()
+    } else if trimmed.contains("://") {
+        trimmed.to_string()
+    } else {
+        format!("https://{}", trimmed)
+    }
+}
+
 mod imp {
     use super::*;
 
@@ -163,14 +178,14 @@ impl SimplesyncAccountPage {
     }
 
     fn start_login_flow(&self) {
-        let server = self.imp().server_entry.text().trim().to_string();
+        let server = normalize_server_url(&self.imp().server_entry.text());
         if server.is_empty() {
             self.set_login_status("Please enter a server URL", false);
             return;
         }
 
-        // Normalize: strip trailing slash
-        let server = server.trim_end_matches('/').to_string();
+        // Show the normalized URL so the user can see what we are connecting to.
+        self.imp().server_entry.set_text(&server);
 
         self.imp().login_button.set_sensitive(false);
         self.imp().login_spinner.set_visible(true);
@@ -432,5 +447,35 @@ impl SimplesyncAccountPage {
         });
 
         dialog.present(Some(&self.window()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_server_url;
+
+    #[test]
+    fn accepts_bare_hosts_and_preserves_explicit_schemes() {
+        assert_eq!(
+            normalize_server_url("cloud.example.com"),
+            "https://cloud.example.com"
+        );
+        assert_eq!(
+            normalize_server_url("cloud.example.com/"),
+            "https://cloud.example.com"
+        );
+        assert_eq!(
+            normalize_server_url("  cloud.example.com/nextcloud  "),
+            "https://cloud.example.com/nextcloud"
+        );
+        assert_eq!(
+            normalize_server_url("http://localhost:8080"),
+            "http://localhost:8080"
+        );
+        assert_eq!(
+            normalize_server_url("https://cloud.example.com/"),
+            "https://cloud.example.com"
+        );
+        assert_eq!(normalize_server_url("   "), "");
     }
 }
