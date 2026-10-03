@@ -401,6 +401,16 @@ impl SimplesyncTargetsPage {
                                                     "Pushing {}/{}:  {}", files_done + 1, files_total, name
                                                 ));
                                             }
+                                            PushProgress::Bytes { current_file, files_done, files_total, bytes_done, bytes_total } => {
+                                                let name = std::path::Path::new(&current_file)
+                                                    .file_name()
+                                                    .map(|n| n.to_string_lossy().to_string())
+                                                    .unwrap_or(current_file);
+                                                let percent = if bytes_total > 0 { bytes_done * 100 / bytes_total } else { 0 };
+                                                row_ref.set_subtitle(&format!(
+                                                    "Pushing {}/{}:  {} ({}%)", files_done + 1, files_total, name, percent
+                                                ));
+                                            }
                                             PushProgress::Complete { summary, .. } => {
                                                 push_btn.set_visible(true);
                                                 pull_btn.set_visible(true);
@@ -884,6 +894,18 @@ impl SimplesyncTargetsPage {
                                 .unwrap_or(current_file);
                             row.set_subtitle(&format!(
                                 "Pushing {}/{}:  {}", files_done + 1, files_total, name
+                            ));
+                        }
+                    }
+                    PushProgress::Bytes { current_file, files_done, files_total, bytes_done, bytes_total } => {
+                        if let Some(row) = page.find_row(target_id) {
+                            let name = std::path::Path::new(&current_file)
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or(current_file);
+                            let percent = if bytes_total > 0 { bytes_done * 100 / bytes_total } else { 0 };
+                            row.set_subtitle(&format!(
+                                "Pushing {}/{}:  {} ({}%)", files_done + 1, files_total, name, percent
                             ));
                         }
                     }

@@ -1,5 +1,5 @@
 use crate::db::Target;
-use crate::webdav::WebDAVClient;
+use crate::webdav::{WebDAVClient, WebDAVError};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,6 +28,13 @@ pub enum PushProgress {
         current_file: String,
         files_done: u32,
         files_total: u32,
+    },
+    Bytes {
+        current_file: String,
+        files_done: u32,
+        files_total: u32,
+        bytes_done: u64,
+        bytes_total: u64,
     },
     Complete {
         #[allow(dead_code)]
@@ -285,6 +292,12 @@ fn do_push(
     }
 
     // Step 5: Upload files
+    // Discover server capabilities once so we only use chunked upload on
+    // Nextcloud servers that support it.
+    let caps = client.upload_capabilities();
+    let use_chunking = caps.chunking_ng;
+    let chunk_size = WebDAVClient::effective_chunk_size(&caps);
+
     let upload_total = to_upload.len() as u32;
     for (i, (rel_path, mtime, size)) in to_upload.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
@@ -301,7 +314,30 @@ fn do_push(
             files_total: upload_total,
         });
 
-        match client.upload_file(&local_file, &remote_file) {
+        let result = if use_chunking && (*size as u64) > chunk_size {
+            let current = rel_path.clone();
+            let mut on_progress = |bytes_done: u64, bytes_total: u64| {
+                let _ = sender.send(PushProgress::Bytes {
+                    current_file: current.clone(),
+                    files_done: i as u32,
+                    files_total: upload_total,
+                    bytes_done,
+                    bytes_total,
+                });
+            };
+            client.upload_file_chunked(
+                &local_file,
+                &remote_file,
+                *mtime,
+                chunk_size,
+                cancel,
+                &mut on_progress,
+            )
+        } else {
+            client.upload_file(&local_file, &remote_file)
+        };
+
+        match result {
             Ok(()) => {
                 summary.uploaded += 1;
                 let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
@@ -311,6 +347,10 @@ fn do_push(
                      ON CONFLICT(target_id, rel_path) DO UPDATE SET mtime = ?3, size = ?4, uploaded_at = ?5",
                     rusqlite::params![target.id, rel_path, mtime, size, now],
                 ).ok();
+            }
+            Err(WebDAVError::Cancelled) => {
+                summary.cancelled = true;
+                break;
             }
             Err(e) => {
                 summary.errors.push(format!("{}: {}", rel_path, e));
