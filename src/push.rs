@@ -334,7 +334,7 @@ fn do_push(
                 &mut on_progress,
             )
         } else {
-            client.upload_file(&local_file, &remote_file)
+            client.upload_file(&local_file, &remote_file, *mtime)
         };
 
         match result {

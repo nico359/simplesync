@@ -202,8 +202,14 @@ impl WebDAVClient {
         Ok(())
     }
 
-    /// Upload a file
-    pub fn upload_file(&self, local_path: &str, remote_path: &str) -> Result<(), WebDAVError> {
+    /// Upload a file with a single PUT, preserving its modification time via
+    /// the Nextcloud `X-OC-Mtime` header (ignored by plain WebDAV servers).
+    pub fn upload_file(
+        &self,
+        local_path: &str,
+        remote_path: &str,
+        mtime: f64,
+    ) -> Result<(), WebDAVError> {
         let path = remote_path.trim_start_matches('/');
         let url = format!("{}/{}", self.base_url(), encode_path(path));
 
@@ -214,6 +220,7 @@ impl WebDAVClient {
         let resp = client
             .put(&url)
             .header("Authorization", self.auth_header())
+            .header("X-OC-Mtime", (mtime.floor() as i64).to_string())
             .timeout(self.upload_timeout(data.len() as u64))
             .body(data)
             .send()
@@ -860,6 +867,40 @@ mod tests {
         );
         assert!(result.is_ok(), "chunked upload failed: {:?}", result.err());
         assert_eq!(last_done as usize, data.len());
+
+        let out = dir.join("downloaded.bin");
+        client
+            .download_file(&remote, out.to_str().unwrap())
+            .expect("download failed");
+        assert_eq!(std::fs::read(&out).unwrap(), data);
+
+        client.delete(&remote).ok();
+        client.delete(remote_dir).ok();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Plain (non-chunked) PUT round-trip, including the X-OC-Mtime header.
+    #[test]
+    #[ignore = "requires a live Nextcloud server"]
+    fn plain_upload_roundtrip() {
+        let Some(client) = env_client() else {
+            eprintln!("skipping: set SIMPLESYNC_TEST_URL/USER/PASS");
+            return;
+        };
+
+        let dir = std::env::temp_dir().join(format!("simplesync-plain-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let local = dir.join("small.bin");
+        let data = payload(64 * 1024);
+        std::fs::write(&local, &data).unwrap();
+
+        let remote_dir = "/simplesync-chunk-test";
+        let remote = format!("{}/small-{}.bin", remote_dir, std::process::id());
+        client.create_directory(remote_dir).ok();
+
+        client
+            .upload_file(local.to_str().unwrap(), &remote, MTIME)
+            .expect("plain upload failed");
 
         let out = dir.join("downloaded.bin");
         client
