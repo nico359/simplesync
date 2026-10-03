@@ -304,6 +304,7 @@ impl SimplesyncAccountPage {
                 Ok(LoginMsg::Credentials(server_url, username, app_password)) => {
                     page.imp().login_spinner.set_visible(false);
                     page.imp().login_spinner.set_spinning(false);
+                    page.set_login_status("Saving credentials…", false);
 
                     // Save credentials
                     let creds = Credentials {
@@ -312,21 +313,26 @@ impl SimplesyncAccountPage {
                         app_password,
                     };
 
-                    let (save_tx, save_rx) = std::sync::mpsc::channel::<bool>();
+                    let (save_tx, save_rx) = std::sync::mpsc::channel::<keyring::StoreOutcome>();
                     std::thread::spawn(move || {
-                        let success = keyring::store_credentials_sync(&creds);
-                        let _ = save_tx.send(success);
+                        let outcome = keyring::store_credentials_sync(&creds);
+                        let _ = save_tx.send(outcome);
                     });
 
                     let page_inner = page.clone();
                     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                         match save_rx.try_recv() {
-                            Ok(true) => {
+                            Ok(keyring::StoreOutcome::Keyring) => {
                                 page_inner.show_logged_in(&server_url, &username);
                                 page_inner.window().show_toast("Logged in successfully");
                                 glib::ControlFlow::Break
                             }
-                            Ok(false) => {
+                            Ok(keyring::StoreOutcome::Plaintext) => {
+                                page_inner.show_logged_in(&server_url, &username);
+                                page_inner.show_plaintext_warning();
+                                glib::ControlFlow::Break
+                            }
+                            Ok(keyring::StoreOutcome::Failed) => {
                                 page_inner.set_login_status("Failed to save credentials", true);
                                 page_inner.imp().login_button.set_sensitive(true);
                                 glib::ControlFlow::Break
@@ -349,6 +355,18 @@ impl SimplesyncAccountPage {
                 Err(_) => glib::ControlFlow::Break,
             }
         });
+    }
+
+    /// Warn that the app password was stored unencrypted because no system
+    /// keyring was available.
+    fn show_plaintext_warning(&self) {
+        let dialog = adw::AlertDialog::builder()
+            .heading("Credentials stored unencrypted")
+            .body("No system keyring is available, so your Nextcloud app password was saved in a file that only this app can read. Install or unlock a system keyring to store it encrypted.")
+            .build();
+        dialog.add_response("ok", "OK");
+        dialog.set_default_response(Some("ok"));
+        dialog.present(Some(&self.window()));
     }
 
     fn set_login_status(&self, message: &str, is_error: bool) {
