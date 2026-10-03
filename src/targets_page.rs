@@ -40,6 +40,7 @@ mod imp {
         pub window: RefCell<Option<SimplesyncWindow>>,
         pub busy: Cell<bool>,
         pub active_cancel: RefCell<Option<Arc<AtomicBool>>>,
+        pub refresh_serial: Cell<u64>,
     }
 
     impl std::fmt::Debug for SimplesyncTargetsPage {
@@ -174,21 +175,47 @@ impl SimplesyncTargetsPage {
             list.remove(&child);
         }
 
-        // Check if account is configured
-        let has_account = keyring::load_credentials_sync().is_some();
+        // Loading credentials can block (keyring / portal backends), so do it
+        // on a background thread. This method is called while the window is
+        // being constructed, and blocking here would stop the window from ever
+        // being shown.
+        let serial = self.imp().refresh_serial.get().wrapping_add(1);
+        self.imp().refresh_serial.set(serial);
 
-        if !has_account {
-            self.imp().content_stack.set_visible_child_name("no_account");
-            return;
-        }
+        let (tx, rx) = std::sync::mpsc::channel::<bool>();
+        std::thread::spawn(move || {
+            let _ = tx.send(keyring::load_credentials_sync().is_some());
+        });
 
-        let window = self.window();
-        let targets = window.db().get_targets().unwrap_or_default();
+        let page = self.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            // A newer refresh superseded this one.
+            if page.imp().refresh_serial.get() != serial {
+                return glib::ControlFlow::Break;
+            }
 
+            match rx.try_recv() {
+                Ok(true) => {
+                    let targets = page.window().db().get_targets().unwrap_or_default();
+                    page.render_targets(targets);
+                    glib::ControlFlow::Break
+                }
+                Ok(false) => {
+                    page.imp().content_stack.set_visible_child_name("no_account");
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(_) => glib::ControlFlow::Break,
+            }
+        });
+    }
+
+    fn render_targets(&self, targets: Vec<Target>) {
         if targets.is_empty() {
             self.imp().content_stack.set_visible_child_name("empty");
         } else {
             self.imp().content_stack.set_visible_child_name("list");
+            let list = &self.imp().targets_list;
             for target in &targets {
                 let row = self.create_target_row(target);
                 list.append(&row);
