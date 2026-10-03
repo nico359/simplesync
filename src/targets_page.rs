@@ -70,7 +70,8 @@ mod imp {
 
 glib::wrapper! {
     pub struct SimplesyncTargetsPage(ObjectSubclass<imp::SimplesyncTargetsPage>)
-        @extends gtk::Widget, adw::NavigationPage;
+        @extends gtk::Widget, adw::NavigationPage,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl SimplesyncTargetsPage {

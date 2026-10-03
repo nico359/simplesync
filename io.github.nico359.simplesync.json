@@ -1,9 +1,11 @@
 {
     "id" : "io.github.nico359.simplesync",
     "runtime" : "org.gnome.Platform",
-    "runtime-version" : "50",
+    "runtime-version" : "51",
     "sdk" : "org.gnome.Sdk",
-    "sdk-extensions" : ["org.freedesktop.Sdk.Extension.rust-stable"],
+    "sdk-extensions" : [
+        "org.freedesktop.Sdk.Extension.rust-stable"
+    ],
     "command" : "simplesync",
     "finish-args" : [
         "--share=network",
@@ -40,7 +42,10 @@
             "name" : "simplesync",
             "builddir" : true,
             "buildsystem" : "meson",
-            "config-opts" : ["-Dbuildtype=release"],
+            "config-opts" : [
+                "-Dbuildtype=release",
+                "--libdir=lib"
+            ],
             "sources" : [
                 {
                     "type" : "dir",
