@@ -106,11 +106,15 @@ impl SimplesyncApplication {
             .application_icon("io.github.nico359.simplesync")
             .developer_name("nico359")
             .version(VERSION)
-            .developers(vec!["nico359", "GitHub Copilot CLI (Claude)"])
+            .developers(vec![
+                "nico359",
+                "GitHub Copilot CLI (Claude)",
+                "OpenCode (DeepSeek)",
+            ])
             .translator_credits(&gettext("translator-credits"))
             .copyright("© 2026 nico359")
             .license_type(gtk::License::Gpl30)
-            .comments("A simple file sync tool for Nextcloud and WebDAV servers.\n\nBuilt with the assistance of AI (GitHub Copilot CLI, powered by Claude).")
+            .comments("A simple file sync tool for Nextcloud and WebDAV servers.\n\nBuilt with the assistance of AI (GitHub Copilot CLI with Claude, and OpenCode with DeepSeek).")
             .website("https://github.com/nico359/simplesync")
             .issue_url("https://github.com/nico359/simplesync/issues")
             .build();
