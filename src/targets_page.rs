@@ -318,6 +318,7 @@ impl SimplesyncTargetsPage {
                 row_ref.set_subtitle("Scanning…");
                 push_btn.set_sensitive(false);
                 pull_btn.set_sensitive(false);
+                page.window().show_toast("Scanning for changes…");
 
                 let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
                 let db_path = crate::db::Database::db_path();
@@ -525,6 +526,7 @@ impl SimplesyncTargetsPage {
                 row_ref.set_subtitle("Scanning…");
                 push_btn.set_sensitive(false);
                 pull_btn.set_sensitive(false);
+                page.window().show_toast("Scanning for changes…");
 
                 let client = WebDAVClient::new(&creds.server_url, &creds.username, &creds.app_password);
 
@@ -730,6 +732,7 @@ impl SimplesyncTargetsPage {
         };
 
         // Scan all targets first
+        self.window().show_toast("Scanning targets…");
         let db_path = crate::db::Database::db_path();
         let targets_clone: Vec<_> = targets.clone();
         let creds_clone = creds.clone();
@@ -979,6 +982,7 @@ impl SimplesyncTargetsPage {
         };
 
         // Scan all targets first
+        self.window().show_toast("Scanning targets…");
         let targets_clone: Vec<_> = targets.clone();
         let creds_clone = creds.clone();
         let (plan_tx, plan_rx) = std::sync::mpsc::channel();
