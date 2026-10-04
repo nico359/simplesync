@@ -1,0 +1,14 @@
+# The org.gnome.Sdk / org.freedesktop.Sdk build environment exports CFLAGS
+# containing an optimization flag (e.g. -O2). aws-lc-sys must compile its
+# bundled CPU-jitter entropy source with -O0, but cc-rs applies the environment
+# CFLAGS last, and they win over the -O0 aws-lc-sys sets. The file then fails:
+#
+#   error: "The CPU Jitter random number generator must not be compiled with
+#           optimizations... Use the compiler switch -O0"
+#
+# This is independent of the release opt-level: it reproduces with both
+# `opt-level = "s"` and `opt-level = 3` inside the Flatpak SDK. Disable that
+# supplemental entropy source; AWS-LC still seeds its DRBG from the OS CSPRNG
+# (getrandom). See https://github.com/aws/aws-lc-rs/issues/1097
+[env]
+AWS_LC_SYS_NO_JITTER_ENTROPY = "1"

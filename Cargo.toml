@@ -26,4 +26,5 @@ features = ["v1_9"]
 [profile.release]
 strip = true
 lto = true
-opt-level = "s"
+codegen-units = 1
+opt-level = 3
