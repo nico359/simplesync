@@ -7,7 +7,8 @@
   <name>SimpleSync</name>
   <summary>Push files to Nextcloud via WebDAV</summary>
   <description>
-    <p>SimpleSync is a simple file sync tool for Nextcloud and WebDAV servers. Push local folders to your server with incremental uploads and optional mirror mode.</p>
+    <p>SimpleSync is a simple file sync tool for Nextcloud and WebDAV servers. Push local folders to your server with incremental uploads and optional mirror mode, or pull remote content down to a local folder.</p>
+    <p>It is designed to be lightweight and mobile-friendly, so it works on Linux phones as well as on the desktop.</p>
   </description>
 
   <developer id="io.github.nico359">
@@ -16,15 +17,16 @@
 
   <icon type="stock">io.github.nico359.simplesync</icon>
 
-  <url type="homepage">https://github.com/nico359/cloudsend</url>
-  <url type="vcs-browser">https://github.com/nico359/cloudsend</url>
-  <url type="bugtracker">https://github.com/nico359/cloudsend/issues</url>
+  <url type="homepage">https://github.com/nico359/simplesync</url>
+  <url type="vcs-browser">https://github.com/nico359/simplesync</url>
+  <url type="bugtracker">https://github.com/nico359/simplesync/issues</url>
+
+  <categories>
+    <category>Utility</category>
+  </categories>
 
   <recommends>
     <display_length compare="ge">360</display_length>
-    <control>touch</control>
-    <control>keyboard</control>
-    <control>pointing</control>
   </recommends>
   <supports>
     <control>touch</control>
@@ -36,7 +38,43 @@
   <launchable type="desktop-id">io.github.nico359.simplesync.desktop</launchable>
   <content_rating type="oars-1.1" />
 
+  <screenshots>
+    <screenshot type="default">
+      <caption>All configured sync targets</caption>
+      <image>https://raw.githubusercontent.com/nico359/simplesync/refs/heads/main/data/overview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Add your first sync target</caption>
+      <image>https://raw.githubusercontent.com/nico359/simplesync/refs/heads/main/data/targets.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Connecting a Nextcloud account</caption>
+      <image>https://raw.githubusercontent.com/nico359/simplesync/refs/heads/main/data/account.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Setting up a sync target</caption>
+      <image>https://raw.githubusercontent.com/nico359/simplesync/refs/heads/main/data/target_setup.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Works on mobile Linux devices</caption>
+      <image>https://raw.githubusercontent.com/nico359/simplesync/refs/heads/main/data/mobile.png</image>
+    </screenshot>
+  </screenshots>
+
   <releases>
+    <release version="1.2.0" date="2026-10-04">
+      <description translate="no">
+        <p>Big sync and permission update.</p>
+        <ul>
+          <li>Chunked uploads with resume for large files on Nextcloud</li>
+          <li>Uploads now preserve the original file modification time</li>
+          <li>Credentials are stored via the sandboxed Secret portal instead of the secrets bus - because I did not want to do a transitional release, you will have to log in again, sorry</li>
+          <li>Server URLs can be entered without the https:// prefix</li>
+          <li>Landscape default window size and a toast while scans start</li>
+          <li>Updated to GNOME runtime 51 and current Rust crates</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.1" date="2026-05-18">
       <description translate="no">
         <p>No major changes to the App itself.</p>

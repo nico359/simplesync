@@ -111,8 +111,8 @@ impl SimplesyncApplication {
             .copyright("© 2026 nico359")
             .license_type(gtk::License::Gpl30)
             .comments("A simple file sync tool for Nextcloud and WebDAV servers.\n\nBuilt with the assistance of AI (GitHub Copilot CLI, powered by Claude).")
-            .website("https://github.com/nico359/cloudsend")
-            .issue_url("https://github.com/nico359/cloudsend/issues")
+            .website("https://github.com/nico359/simplesync")
+            .issue_url("https://github.com/nico359/simplesync/issues")
             .build();
 
         about.add_credit_section(
